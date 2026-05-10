@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cert Tracker">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f172a">
+<title>Certification Tracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overscroll-behavior: none; }
+  body { background: #0f172a; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+const { Send, MessageCircle, Clock, TrendingUp } = LucideReact;
+
+const API_KEY_STORAGE = 'cert_tracker_api_key';
+
+/* ── API Key Banner ────────────────────────────────────────────────────── */
+const ApiKeyBanner = ({ onSave }) => {
+  const [input, setInput] = useState('');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-slate-800 rounded-2xl border border-slate-600 p-6 shadow-2xl">
+        <h2 className="text-lg font-bold text-white mb-1">Anthropic API Key</h2>
+        <p className="text-slate-400 text-sm mb-4">
+          Required for the AI Study Coach. Your key is stored only in this browser.
+        </p>
+        <input
+          type="password"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && input.startsWith('sk-') && onSave(input.trim())}
+          placeholder="sk-ant-..."
+          className="w-full bg-slate-700 border border-slate-500 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-500 outline-none focus:border-blue-400 mb-3"
+          autoFocus
+        />
+        <button
+          onClick={() => input.startsWith('sk-') && onSave(input.trim())}
+          disabled={!input.startsWith('sk-')}
+          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition text-sm"
+        >
+          Save &amp; Continue
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ── Main App ──────────────────────────────────────────────────────────── */
+const CertificationTracker = () => {
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE) || '');
+  const [certs, setCerts] = useState([]);
+  const [selectedCert, setSelectedCert] = useState(null);
+  const [selectedTopic, setSelectedTopic] = useState(null);
+  const [timeInput, setTimeInput] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showTimeModal, setShowTimeModal] = useState(false);
+  const chatEndRef = useRef(null);
+
+  const CERT_TEMPLATES = {
+    'SonicWall Academy': {
+      description: 'SonicWall NSv Security Certification',
+      domains: [
+        { name: 'NSv Architecture & Deployment', topics: ['Platform overview', 'Virtual appliances', 'Multi-tenant setup', 'High availability'] },
+        { name: 'Network & VPN Configuration', topics: ['Interface setup', 'Routing basics', 'IPSec VPN', 'SSL VPN'] },
+        { name: 'Security Services', topics: ['Threat prevention', 'IPS/IDS', 'DPI-SSL', 'Application firewall'] },
+        { name: 'Advanced Features', topics: ['SD-WAN', 'Load balancing', 'Failover policies', 'WAN optimization'] }
+      ]
+    },
+    'Acronis Academy': {
+      description: 'Acronis Cyber Protect Cloud Certification',
+      domains: [
+        { name: 'Platform Architecture', topics: ['Cloud infrastructure', 'Agent deployment', 'Console setup', 'Integration options'] },
+        { name: 'Backup & Recovery', topics: ['Backup policies', 'Incremental backups', 'Disaster recovery', 'RTO/RPO planning'] },
+        { name: 'Security & Compliance', topics: ['Encryption', 'Access control', 'Audit logging', 'Compliance reporting'] },
+        { name: 'Advanced Topics', topics: ['Cloud-to-cloud', 'Ransomware protection', 'Patch management', 'Performance tuning'] }
+      ]
+    },
+    'SC-900': {
+      description: 'Microsoft Security, Compliance, and Identity Fundamentals',
+      domains: [
+        { name: 'Security Concepts', topics: ['Shared responsibility', 'Defense-in-depth', 'Zero trust', 'Threat landscape'] },
+        { name: 'Azure Identity & Access', topics: ['Azure AD', 'Authentication', 'Authorization', 'Conditional access'] },
+        { name: 'Compliance & Privacy', topics: ['Compliance offerings', 'Data protection', 'Privacy laws', 'Governance'] },
+        { name: 'Azure Security Services', topics: ['Azure Defender', 'Key Vault', 'Sentinel', 'Security Center'] }
+      ]
+    },
+    'AZ-104': {
+      description: 'Azure Administrator Associate',
+      domains: [
+        { name: 'Compute Resources', topics: ['VMs', 'App Services', 'Container instances', 'Scaling'] },
+        { name: 'Storage & Databases', topics: ['Storage accounts', 'Managed disks', 'SQL Database', 'Cosmos DB'] },
+        { name: 'Networking', topics: ['Virtual networks', 'Load balancing', 'DNS', 'VPN & ExpressRoute'] },
+        { name: 'Management & Monitoring', topics: ['Azure Monitor', 'Automation', 'Backup & recovery', 'Cost management'] }
+      ]
+    },
+    'AI-102': {
+      description: 'Azure AI Engineer Associate',
+      domains: [
+        { name: 'AI Services Overview', topics: ['Computer Vision', 'Language services', 'Search', 'Bot Framework'] },
+        { name: 'Vision & Image Analysis', topics: ['Image classification', 'Object detection', 'OCR', 'Face detection'] },
+        { name: 'Language & NLP', topics: ['Text analysis', 'Translation', 'QnA Maker', 'Language understanding'] },
+        { name: 'Search & Knowledge Mining', topics: ['Cognitive Search', 'Indexing', 'Enrichment', 'Query optimization'] }
+      ]
+    },
+    'AZ-204': {
+      description: 'Azure Developer Associate',
+      domains: [
+        { name: 'Compute Solutions', topics: ['App Service', 'Azure Functions', 'Containers', 'Deployment'] },
+        { name: 'Data & Storage', topics: ['Cosmos DB', 'Blob storage', 'Table storage', 'Data migration'] },
+        { name: 'APIs & Integration', topics: ['REST APIs', 'API Management', 'Logic Apps', 'Event Hubs'] },
+        { name: 'Authentication & Security', topics: ['Identity platform', 'Key Vault', 'Managed identity', 'RBAC'] }
+      ]
+    },
+    'AZ-305': {
+      description: 'Azure Solutions Architect Expert',
+      domains: [
+        { name: 'Design Infrastructure', topics: ['Scalability', 'High availability', 'Disaster recovery', 'Network design'] },
+        { name: 'Design Applications', topics: ['App architecture', 'Database design', 'Caching', 'Messaging patterns'] },
+        { name: 'Design Migration', topics: ['Assessment', 'Migration planning', 'Hybrid scenarios', 'Cost optimization'] },
+        { name: 'Governance & Security', topics: ['Identity architecture', 'Security design', 'Compliance', 'Cost management'] }
+      ]
+    },
+    'Microsoft Study': {
+      description: 'Microsoft Certification Preparation',
+      domains: [
+        { name: 'Azure Fundamentals', topics: ['Cloud concepts', 'Core services', 'Pricing & support', 'Azure learning paths'] },
+        { name: 'Study Resources', topics: ['Microsoft Learn modules', 'Practice exams', 'Documentation', 'Video tutorials'] },
+        { name: 'Exam Strategy', topics: ['Question types', 'Time management', 'Common pitfalls', 'Last-minute prep'] }
+      ]
+    }
+  };
+
+  const initializeCerts = () => {
+    const initialCerts = Object.entries(CERT_TEMPLATES).map(([name, template]) => ({
+      id: name.replace(/\s+/g, '-'),
+      name,
+      ...template,
+      targetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      progress: {}
+    }));
+    setCerts(initialCerts);
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem('certs');
+    if (saved) {
+      setCerts(JSON.parse(saved));
+    } else {
+      initializeCerts();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (certs.length > 0) localStorage.setItem('certs', JSON.stringify(certs));
+  }, [certs]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const saveApiKey = (key) => {
+    localStorage.setItem(API_KEY_STORAGE, key);
+    setApiKey(key);
+  };
+
+  const updateProgress = (certId, topicKey, hours) => {
+    setCerts(prev => prev.map(cert => {
+      if (cert.id === certId) {
+        return {
+          ...cert,
+          progress: {
+            ...cert.progress,
+            [topicKey]: (cert.progress[topicKey] || 0) + hours
+          }
+        };
+      }
+      return cert;
+    }));
+    setShowTimeModal(false);
+    setTimeInput('');
+    setSelectedTopic(null);
+  };
+
+  const getProgressStats = (cert) => {
+    const totalHours = Object.values(cert.progress || {}).reduce((a, b) => a + b, 0);
+    const totalTopics = cert.domains.reduce((sum, domain) => sum + domain.topics.length, 0);
+    const daysUntilTarget = Math.ceil((new Date(cert.targetDate) - new Date()) / (1000 * 60 * 60 * 24));
+    const weeksRemaining = Math.max(1, Math.ceil(daysUntilTarget / 7));
+    const hoursPerWeek = totalHours > 0 ? (totalHours / weeksRemaining).toFixed(1) : 0;
+    const estimatedCompletion = hoursPerWeek > 0
+      ? Math.ceil((totalTopics * 5 - totalHours) / (parseFloat(hoursPerWeek) * 7))
+      : '—';
+
+    return {
+      totalHours,
+      totalTopics,
+      daysUntilTarget,
+      weeksRemaining,
+      hoursPerWeek,
+      estimatedCompletion,
+      progressPercent: Math.min(100, Math.round((totalHours / (totalTopics * 5)) * 100))
+    };
+  };
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || loading) return;
+
+    const userMsg = chatInput;
+    setChatInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setLoading(true);
+
+    try {
+      const progressContext = certs.map(cert => {
+        const stats = getProgressStats(cert);
+        return `${cert.name}: ${stats.totalHours}h studied, ${stats.progressPercent}% progress, target: ${cert.targetDate}`;
+      }).join('\n');
+
+      const systemPrompt = `You are an expert study coach for IT certifications. You have access to the user's study progress:\n\n${progressContext}\n\nBased on their progress, provide targeted guidance on:\n1. What to study next based on weak areas\n2. Realistic timelines for completion\n3. Practice questions and scenarios\n4. Study strategies for their specific situation\n\nBe direct, specific, and actionable. Reference their actual progress numbers.`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-allow-browser': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [
+            ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
+            { role: 'user', content: userMsg }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const assistantMsg = data.content[0]?.text || 'No response received.';
+      setMessages(prev => [...prev, { role: 'assistant', content: assistantMsg }]);
+    } catch (error) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Error: ${error.message}. Check your API key or network connection.`
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!apiKey) return <ApiKeyBanner onSave={saveApiKey} />;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-4 md:p-6">
+      <div className="max-w-7xl mx-auto">
+
+        {/* Header */}
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-1">
+              Certification Roadmap
+            </h1>
+            <p className="text-slate-400 text-sm">Track progress across 8 certifications with AI-powered study guidance</p>
+          </div>
+          <button
+            onClick={() => { localStorage.removeItem(API_KEY_STORAGE); setApiKey(''); }}
+            className="text-slate-500 hover:text-slate-300 text-xs font-mono uppercase tracking-widest whitespace-nowrap mt-1 transition"
+            title="Change API key"
+          >
+            API Key
+          </button>
+        </header>
+
+        <div className="flex flex-col lg:flex-row gap-6" style={{ minHeight: 'calc(100vh - 180px)' }}>
+
+          {/* Cert Grid */}
+          <div className="flex-1 overflow-y-auto pr-0 lg:pr-2">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {certs.map(cert => {
+                const stats = getProgressStats(cert);
+                const isOpen = selectedCert?.id === cert.id;
+                return (
+                  <div
+                    key={cert.id}
+                    className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl border border-slate-600 hover:border-blue-400 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(59,130,246,0.15)]"
+                  >
+                    {/* Card header — always clickable to expand */}
+                    <div
+                      className="p-5 cursor-pointer"
+                      onClick={() => setSelectedCert(isOpen ? null : cert)}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <h3 className="text-base font-bold leading-tight">{cert.name}</h3>
+                        <span className="text-slate-400 text-lg select-none">{isOpen ? '▲' : '▼'}</span>
+                      </div>
+                      <p className="text-slate-400 text-xs mb-4">{cert.description}</p>
+
+                      {/* Progress bar */}
+                      <div className="mb-4">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-sm text-slate-300">{stats.progressPercent}% Complete</span>
+                          <span className="text-xs text-blue-400">{stats.totalHours}h studied</span>
+                        </div>
+                        <div className="w-full bg-slate-600 rounded-full h-2">
+                          <div
+                            className="h-2 rounded-full"
+                            style={{
+                              width: `${stats.progressPercent}%`,
+                              background: 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)'
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Stats grid */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-slate-600/60 p-2 rounded-lg">
+                          <div className="text-slate-400 mb-0.5">Est. Complete</div>
+                          <div className="text-blue-300 font-semibold">{stats.estimatedCompletion} days</div>
+                        </div>
+                        <div className="bg-slate-600/60 p-2 rounded-lg">
+                          <div className="text-slate-400 mb-0.5">Target Date</div>
+                          <div className="text-cyan-300 font-semibold">{stats.daysUntilTarget} days</div>
+                        </div>
+                        <div className="bg-slate-600/60 p-2 rounded-lg">
+                          <div className="text-slate-400 mb-0.5">Velocity</div>
+                          <div className="text-green-300 font-semibold">{stats.hoursPerWeek}h/wk</div>
+                        </div>
+                        <div className="bg-slate-600/60 p-2 rounded-lg">
+                          <div className="text-slate-400 mb-0.5">Topics</div>
+                          <div className="text-purple-300 font-semibold">
+                            {Object.keys(cert.progress || {}).length}/{stats.totalTopics}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded topic list */}
+                    {isOpen && (
+                      <div className="border-t border-slate-600 px-5 pb-5 pt-4">
+                        <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                          {cert.domains.map((domain, didx) => (
+                            <div key={didx}>
+                              <h4 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-2">{domain.name}</h4>
+                              {domain.topics.map((topic, tidx) => {
+                                const topicKey = `${didx}-${tidx}`;
+                                const hours = cert.progress?.[topicKey] || 0;
+                                return (
+                                  <div
+                                    key={tidx}
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setSelectedTopic(topicKey);
+                                      setSelectedCert(cert);
+                                      setShowTimeModal(true);
+                                    }}
+                                    className={`mb-1.5 p-2 rounded-lg bg-slate-700 hover:bg-slate-600 cursor-pointer text-sm transition border-l-2 ${hours > 0 ? 'border-emerald-500' : 'border-slate-500'}`}
+                                  >
+                                    <div className="flex justify-between items-center">
+                                      <span>{topic}</span>
+                                      <span className={`text-xs font-mono ${hours > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                        {hours > 0 ? `${hours}h` : '+ log'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* AI Chat Sidebar */}
+          <div className="w-full lg:w-96 bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl border border-slate-600 flex flex-col" style={{ height: '600px' }}>
+            <div className="p-4 border-b border-slate-600 flex-shrink-0">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <MessageCircle size={18} className="text-blue-400" />
+                Study Coach
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">AI-powered guidance based on your progress</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+              {messages.length === 0 && (
+                <div className="text-slate-400 text-sm text-center py-8 space-y-1">
+                  <p className="font-medium">Ask me about:</p>
+                  <p className="text-xs">• What to study next</p>
+                  <p className="text-xs">• Practice questions</p>
+                  <p className="text-xs">• Study strategies</p>
+                  <p className="text-xs">• Progress analysis</p>
+                </div>
+              )}
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div
+                    className={`max-w-[85%] p-3 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white rounded-br-sm'
+                        : 'bg-slate-600 text-slate-100 rounded-bl-sm'
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="flex gap-1.5 p-3 bg-slate-600 rounded-xl rounded-bl-sm">
+                    {[0, 0.2, 0.4].map((delay, i) => (
+                      <div
+                        key={i}
+                        className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
+                        style={{ animationDelay: `${delay}s` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className="p-4 border-t border-slate-600 flex-shrink-0">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+                  placeholder="Ask about your studies..."
+                  className="flex-1 bg-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  disabled={loading}
+                />
+                <button
+                  onClick={sendChatMessage}
+                  disabled={loading || !chatInput.trim()}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg px-3 py-2 transition flex items-center"
+                >
+                  <Send size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Log Time Modal */}
+      {showTimeModal && selectedCert && selectedTopic !== null && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          onClick={() => setShowTimeModal(false)}
+        >
+          <div
+            className="bg-slate-800 rounded-2xl p-6 w-full max-w-xs border border-slate-600 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Clock size={16} className="text-blue-400" />
+              <h3 className="text-base font-bold">Log Study Time</h3>
+            </div>
+            <p className="text-slate-300 text-sm mb-4 pl-6">
+              {selectedCert.domains[parseInt(selectedTopic.split('-')[0])]
+                ?.topics[parseInt(selectedTopic.split('-')[1])]}
+            </p>
+            <div className="flex gap-2 mb-4">
+              {[0.5, 1, 1.5, 2].map(h => (
+                <button
+                  key={h}
+                  onClick={() => setTimeInput(String(h))}
+                  className={`flex-1 py-2 rounded-lg text-sm font-mono transition border ${
+                    timeInput === String(h)
+                      ? 'bg-blue-600 border-blue-500 text-white'
+                      : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-slate-400'
+                  }`}
+                >
+                  {h}h
+                </button>
+              ))}
+            </div>
+            <input
+              type="number"
+              value={timeInput}
+              onChange={e => setTimeInput(e.target.value)}
+              placeholder="Custom hours"
+              className="w-full bg-slate-700 border border-slate-500 rounded-xl px-4 py-2.5 mb-4 text-white text-sm outline-none focus:border-blue-400"
+              min="0.5"
+              step="0.5"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => timeInput && parseFloat(timeInput) > 0 && updateProgress(selectedCert.id, selectedTopic, parseFloat(timeInput))}
+                disabled={!timeInput || parseFloat(timeInput) <= 0}
+                className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-2.5 transition text-sm"
+              >
+                Log
+              </button>
+              <button
+                onClick={() => setShowTimeModal(false)}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl py-2.5 transition text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<CertificationTracker />);
+</script>
+</body>
+</html>
