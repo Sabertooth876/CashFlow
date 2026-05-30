@@ -5,43 +5,337 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Cert Tracker">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0f172a">
-<title>Certification Tracker</title>
+<title>Certification Roadmap</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; overscroll-behavior: none; }
-  body { background: #0f172a; -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overscroll-behavior:none}
+body{background:#0f172a;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:999px}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield}
+
+.detail-panel{
+  position:fixed;top:0;right:0;
+  height:100vh;width:100%;max-width:520px;
+  z-index:40;
+  transform:translateX(100%);
+  transition:transform .3s cubic-bezier(.32,.72,0,1);
+  will-change:transform;
+}
+.detail-panel.open{transform:translateX(0)}
+
+.chat-panel{
+  position:fixed;top:0;right:0;
+  height:100vh;width:100%;max-width:400px;
+  z-index:50;
+  transform:translateX(100%);
+  transition:transform .3s cubic-bezier(.32,.72,0,1);
+  will-change:transform;
+}
+.chat-panel.open{transform:translateX(0)}
+
+@media(max-width:767px){
+  .detail-panel{
+    top:auto;bottom:0;left:0;right:0;
+    height:90vh;max-width:100%;
+    border-radius:20px 20px 0 0;
+    transform:translateY(100%);
+  }
+  .detail-panel.open{transform:translateY(0)}
+  .chat-panel{
+    top:auto;bottom:0;left:0;right:0;
+    height:80vh;max-width:100%;
+    border-radius:20px 20px 0 0;
+    transform:translateY(100%);
+  }
+  .chat-panel.open{transform:translateY(0)}
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.msg-in{animation:slideUp .25s ease}
 </style>
 </head>
 <body>
 <div id="root"></div>
-
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
-const { Send, MessageCircle, Clock, TrendingUp } = LucideReact;
+const { useState, useEffect, useRef, useCallback } = React;
+const { Send, MessageCircle, X, ChevronDown, CheckCircle2, Clock, ExternalLink, BookOpen } = LucideReact;
 
 const API_KEY_STORAGE = 'cert_tracker_api_key';
 
-/* ── API Key Banner ────────────────────────────────────────────────────── */
+// ─── CERT TEMPLATES ───────────────────────────────────────────────────────────
+const CERT_TEMPLATES = {
+  'SonicWall Academy': {
+    description: 'SonicWall NSv Security Certification',
+    domains: [
+      { name: 'NSv Architecture & Deployment', topics: ['Platform overview', 'Virtual appliances', 'Multi-tenant setup', 'High availability'] },
+      { name: 'Network & VPN Configuration',   topics: ['Interface setup', 'Routing basics', 'IPSec VPN', 'SSL VPN'] },
+      { name: 'Security Services',             topics: ['Threat prevention', 'IPS/IDS', 'DPI-SSL', 'Application firewall'] },
+      { name: 'Advanced Features',             topics: ['SD-WAN', 'Load balancing', 'Failover policies', 'WAN optimization'] },
+    ],
+  },
+  'Acronis Academy': {
+    description: 'Acronis Cyber Protect Cloud Certification',
+    domains: [
+      { name: 'Platform Architecture', topics: ['Cloud infrastructure', 'Agent deployment', 'Console setup', 'Integration options'] },
+      { name: 'Backup & Recovery',     topics: ['Backup policies', 'Incremental backups', 'Disaster recovery', 'RTO/RPO planning'] },
+      { name: 'Security & Compliance', topics: ['Encryption', 'Access control', 'Audit logging', 'Compliance reporting'] },
+      { name: 'Advanced Topics',       topics: ['Cloud-to-cloud', 'Ransomware protection', 'Patch management', 'Performance tuning'] },
+    ],
+  },
+  'SC-900': {
+    description: 'Microsoft Security, Compliance, and Identity Fundamentals',
+    domains: [
+      { name: 'Security Concepts',       topics: ['Shared responsibility', 'Defense-in-depth', 'Zero trust', 'Threat landscape'] },
+      { name: 'Azure Identity & Access', topics: ['Azure AD', 'Authentication', 'Authorization', 'Conditional access'] },
+      { name: 'Compliance & Privacy',    topics: ['Compliance offerings', 'Data protection', 'Privacy laws', 'Governance'] },
+      { name: 'Azure Security Services', topics: ['Azure Defender', 'Key Vault', 'Sentinel', 'Security Center'] },
+    ],
+  },
+  'AZ-104': {
+    description: 'Azure Administrator Associate',
+    domains: [
+      { name: 'Compute Resources',       topics: ['VMs', 'App Services', 'Container instances', 'Scaling'] },
+      { name: 'Storage & Databases',     topics: ['Storage accounts', 'Managed disks', 'SQL Database', 'Cosmos DB'] },
+      { name: 'Networking',              topics: ['Virtual networks', 'Load balancing', 'DNS', 'VPN & ExpressRoute'] },
+      { name: 'Management & Monitoring', topics: ['Azure Monitor', 'Automation', 'Backup & recovery', 'Cost management'] },
+    ],
+  },
+  'AI-102': {
+    description: 'Azure AI Engineer Associate',
+    domains: [
+      { name: 'AI Services Overview',     topics: ['Computer Vision', 'Language services', 'Search', 'Bot Framework'] },
+      { name: 'Vision & Image Analysis',  topics: ['Image classification', 'Object detection', 'OCR', 'Face detection'] },
+      { name: 'Language & NLP',           topics: ['Text analysis', 'Translation', 'QnA Maker', 'Language understanding'] },
+      { name: 'Search & Knowledge Mining',topics: ['Cognitive Search', 'Indexing', 'Enrichment', 'Query optimization'] },
+    ],
+  },
+  'AZ-204': {
+    description: 'Azure Developer Associate',
+    domains: [
+      { name: 'Compute Solutions',         topics: ['App Service', 'Azure Functions', 'Containers', 'Deployment'] },
+      { name: 'Data & Storage',            topics: ['Cosmos DB', 'Blob storage', 'Table storage', 'Data migration'] },
+      { name: 'APIs & Integration',        topics: ['REST APIs', 'API Management', 'Logic Apps', 'Event Hubs'] },
+      { name: 'Authentication & Security', topics: ['Identity platform', 'Key Vault', 'Managed identity', 'RBAC'] },
+    ],
+  },
+  'AZ-305': {
+    description: 'Azure Solutions Architect Expert',
+    domains: [
+      { name: 'Design Infrastructure', topics: ['Scalability', 'High availability', 'Disaster recovery', 'Network design'] },
+      { name: 'Design Applications',   topics: ['App architecture', 'Database design', 'Caching', 'Messaging patterns'] },
+      { name: 'Design Migration',      topics: ['Assessment', 'Migration planning', 'Hybrid scenarios', 'Cost optimization'] },
+      { name: 'Governance & Security', topics: ['Identity architecture', 'Security design', 'Compliance', 'Cost management'] },
+    ],
+  },
+  'Microsoft Study': {
+    description: 'Microsoft Certification Preparation',
+    domains: [
+      { name: 'Azure Fundamentals', topics: ['Cloud concepts', 'Core services', 'Pricing & support', 'Azure learning paths'] },
+      { name: 'Study Resources',    topics: ['Microsoft Learn modules', 'Practice exams', 'Documentation', 'Video tutorials'] },
+      { name: 'Exam Strategy',      topics: ['Question types', 'Time management', 'Common pitfalls', 'Last-minute prep'] },
+    ],
+  },
+};
+
+// ─── SKILL PATHS ──────────────────────────────────────────────────────────────
+const SKILL_PATHS = [
+  { id: 'security',    label: 'Security',             emoji: '🛡', color: '#f97316', textClass: 'text-orange-400',  borderClass: 'border-orange-500',  mutedBg: 'rgba(249,115,22,0.12)',  certs: ['SonicWall Academy','Acronis Academy','SC-900'] },
+  { id: 'azure-admin', label: 'Azure Administration', emoji: '☁', color: '#3b82f6', textClass: 'text-blue-400',    borderClass: 'border-blue-500',    mutedBg: 'rgba(59,130,246,0.12)',  certs: ['AZ-104','AZ-305'] },
+  { id: 'azure-dev',   label: 'Azure Development',    emoji: '💻', color: '#8b5cf6', textClass: 'text-violet-400', borderClass: 'border-violet-500',  mutedBg: 'rgba(139,92,246,0.12)', certs: ['AZ-204'] },
+  { id: 'ai-ml',       label: 'AI & Machine Learning',emoji: '🤖', color: '#06b6d4', textClass: 'text-cyan-400',   borderClass: 'border-cyan-500',    mutedBg: 'rgba(6,182,212,0.12)',  certs: ['AI-102'] },
+  { id: 'foundation',  label: 'Foundation',           emoji: '📚', color: '#10b981', textClass: 'text-emerald-400',borderClass: 'border-emerald-500', mutedBg: 'rgba(16,185,129,0.12)', certs: ['Microsoft Study'] },
+];
+
+// ─── KNOWLEDGE BASE ───────────────────────────────────────────────────────────
+const KNOWLEDGE_BASE = {
+  // SonicWall Academy ────────────────────────────────────────────────────────
+  'SonicWall Academy|NSv Architecture & Deployment|Platform overview': ['NSv is the virtualized form factor of SonicWall firewalls; runs SonicOS, supports all SonicWall security features as a VM.','Managed centrally via SonicWall Network Security Manager (NSM) or the Capture Security Center.','NSv models differ by throughput and vCPU/vRAM allocations (NSv 10 through NSv 400+).','Supports deployment on VMware ESXi, KVM, Microsoft Hyper-V, AWS, Azure, and GCP.'],
+  'SonicWall Academy|NSv Architecture & Deployment|Virtual appliances': ['NSv is deployed as an OVA (VMware) or VHD/VHDX (Hyper-V) image; each interface maps to a virtual NIC.','vCPU and vRAM are pre-allocated at deployment; changing them requires a shutdown.','NSv supports multiple virtual interfaces for LAN, WAN, DMZ, and management segments.','Performance scales with vCPU count; always right-size the model to avoid throughput bottlenecks.'],
+  'SonicWall Academy|NSv Architecture & Deployment|Multi-tenant setup': ['MSSP model separates management domains per tenant via SonicWall Network Security Manager tenants.','Each tenant has isolated policies, logs, and user management; no cross-tenant visibility.','Role-based access in NSM lets MSPs assign read-only or admin roles per tenant technician.','Tenant onboarding requires registering the NSv appliance under the correct tenant in MySonicWall.'],
+  'SonicWall Academy|NSv Architecture & Deployment|High availability': ['Active/Passive HA pairs use a dedicated HA interface to sync stateful session tables between peers.','Heartbeat interval defaults to 1 second; after 5 missed heartbeats the standby appliance takes over.','Both appliances must run identical SonicOS firmware and have the same license entitlements.','Virtual MAC (VMAC) mode allows seamless failover without requiring router ARP table updates.'],
+  'SonicWall Academy|Network & VPN Configuration|Interface setup': ['Each interface is assigned a Zone (LAN, WAN, DMZ, WLAN) which determines default access rules.','IP assignment can be static, DHCP client, or PPPoE depending on the ISP connection type.','WAN interfaces support fail-over probing via target hosts; multiple WAN links are load-balanced.','Management IP on the X0 LAN interface is the primary admin access point; always restrict management access by zone/IP.'],
+  'SonicWall Academy|Network & VPN Configuration|Routing basics': ['SonicOS uses a static routing table with metric-based route preference.','Policy-Based Routing (PBR) can steer traffic by source IP, destination IP, or application.','Dynamic routing via OSPF or RIP is available on higher NSv models.','The route lookup order: static routes → PBR → default gateway; most-specific route wins.'],
+  'SonicWall Academy|Network & VPN Configuration|IPSec VPN': ['Site-to-site IPSec VPNs use IKEv1 or IKEv2 for key exchange; IKEv2 is preferred for reliability.','Phase 1 establishes the ISAKMP SA (encryption, hashing, DH group, lifetime).','Phase 2 negotiates the IPSec SA (ESP/AH, encryption, lifetime, PFS).','VPN policies define local and remote networks; mismatched proxy IDs are the most common misconfiguration error.'],
+  'SonicWall Academy|Network & VPN Configuration|SSL VPN': ['SonicWall SSL VPN (NetExtender) provides remote client-to-site access without dedicated VPN software.','The SSL VPN portal runs on a configurable HTTPS port; client downloads NetExtender on first connect.','Split tunneling routes only corporate-bound traffic through the VPN; full tunnel routes all traffic.','User authentication integrates with local database, LDAP/AD, or RADIUS; MFA is supported via TOTP.'],
+  'SonicWall Academy|Security Services|Threat prevention': ['Capture ATP is SonicWall\'s cloud-based multi-engine sandbox; files are held for analysis with Block Until Verdict.','RTDMI (Real-Time Deep Memory Inspection) detects malicious code that only activates in memory.','Gateway Anti-Virus and Anti-Spyware use signature databases updated from SonicWall\'s cloud.','Threat prevention effectiveness is measured in the NSS Labs/ICSA certification reports.'],
+  'SonicWall Academy|Security Services|IPS/IDS': ['IPS signatures are categorized by severity (Critical, High, Medium, Low, Informational).','Each signature can be set to Prevent (block + log), Detect (log only), or Disabled.','Custom signatures can be created using PCRE-based patterns for custom threat detection.','IPS operates on both client-to-server and server-to-client traffic flows.'],
+  'SonicWall Academy|Security Services|DPI-SSL': ['DPI-SSL (Deep Packet Inspection for SSL/TLS) decrypts, inspects, and re-encrypts HTTPS traffic.','Requires installing the SonicWall CA certificate in client browsers/OS trust stores.','Exclusions are critical for banking, healthcare, and certificate-pinned applications.','Client DPI-SSL inspects outbound HTTPS; Server DPI-SSL inspects inbound traffic to published servers.'],
+  'SonicWall Academy|Security Services|Application firewall': ['App Rules (Application Firewall) allows policy enforcement at Layer 7 for web categories, file types, and keywords.','Policies can block, allow, or bandwidth-limit applications identified by the App Control signatures.','App Control Advanced provides deeper visibility into specific cloud apps (e.g., block Dropbox upload but allow download).','Geo-IP filtering can block traffic to/from specific countries using country IP databases.'],
+  'SonicWall Academy|Advanced Features|SD-WAN': ['SonicWall SD-WAN aggregates multiple WAN links and routes traffic based on performance metrics (jitter, latency, loss).','Performance-based routing dynamically selects the best WAN path for each application.','Requires licensing the SD-WAN feature; configured under Network > SD-WAN.','SD-WAN policies define preferred and fallback paths per application or traffic class.'],
+  'SonicWall Academy|Advanced Features|Load balancing': ['WAN load balancing distributes outbound traffic across multiple ISP links using round-robin or spillover mode.','Spillover mode uses primary WAN until bandwidth threshold is reached, then overflows to secondary.','Per-source IP persistence ensures sessions from the same client always use the same WAN link.','Health checking probes target IPs to detect link failure and remove the failed link from rotation.'],
+  'SonicWall Academy|Advanced Features|Failover policies': ['WAN Failover triggers when the primary link fails probe checks; failback is configurable (immediate or delayed).','HA failover is separate from WAN failover; HA is appliance-level, WAN failover is link-level.','Probe settings: probe target IP, interval, and consecutive failure count before declaring failure.','Secondary WAN interfaces can be configured as Active-Active (load balance) or Active-Standby (failover only).'],
+  'SonicWall Academy|Advanced Features|WAN optimization': ['WAN optimization reduces bandwidth consumption through deduplication, compression, and caching.','Configured via WAN Acceleration policies targeting specific destination subnets or applications.','TCP optimization improves performance for high-latency WAN links by tuning TCP window sizes.','Requires the WAN Acceleration module license.'],
+  // Acronis Academy ─────────────────────────────────────────────────────────
+  'Acronis Academy|Platform Architecture|Cloud infrastructure': ['Acronis Cyber Protect Cloud is a multi-tenant SaaS platform; data is stored in Acronis-hosted or partner-hosted cloud storage.','The platform separates Management Server (orchestration), Storage Node (backup data), and Agent (endpoint) tiers.','Geo-redundant storage replicates backup data to a secondary datacenter for disaster recovery.','Partners access the platform via the Partner Portal; each partner\'s customers exist in a separate tenant.'],
+  'Acronis Academy|Platform Architecture|Agent deployment': ['Agents are installed on endpoints (Windows, macOS, Linux) and VMs to collect backup data locally.','Agent for Windows covers physical machines, Hyper-V VMs, and Microsoft 365 mailboxes.','Agent for VMware (OVA) is deployed as a virtual appliance inside the vCenter environment.','Silent deployment is available via GPO, Intune, or CLI with a registration token.'],
+  'Acronis Academy|Platform Architecture|Console setup': ['The Acronis management console is web-based; accessible at cloud.acronis.com or a partner-hosted URL.','Device onboarding generates a per-tenant registration token used during agent installation.','Protection Plans define backup schedules, retention, and security settings; applied to devices via groups.','Dashboard widgets provide at-a-glance status of backup health, alerts, and device coverage.'],
+  'Acronis Academy|Platform Architecture|Integration options': ['REST API allows programmatic management of devices, plans, and alerts for PSA/RMM integration.','ConnectWise Manage, Autotask, and Kaseya integrations sync billing and alert data automatically.','SIEM integration exports security events via syslog to SIEM platforms like Splunk or Microsoft Sentinel.','Webhook notifications push real-time alerts to custom HTTP endpoints.'],
+  'Acronis Academy|Backup & Recovery|Backup policies': ['A Protection Plan defines: backup source, destination, schedule, retention rules, and optional encryption.','Schedules can be continuous (every 5 min), hourly, daily, or weekly; combine for tiered retention.','GFS (Grandfather-Father-Son) retention keeps daily, weekly, and monthly restore points long-term.','Always-On Backup (continuous CDP) creates restore points every few minutes for critical workloads.'],
+  'Acronis Academy|Backup & Recovery|Incremental backups': ['Full backups capture the entire source; incremental backups capture only blocks changed since the last backup.','Acronis uses block-level incremental backups for disk images and file-level incrementals for file backups.','CBT (Changed Block Tracking) for VMware and Hyper-V identifies changed disk sectors without scanning all data.','Synthetic Full consolidates incrementals into a new full backup on the storage side without re-reading source data.'],
+  'Acronis Academy|Backup & Recovery|Disaster recovery': ['Acronis DRaaS (Disaster Recovery) spins up cloud servers from backup images when the primary site is unavailable.','Runbook orchestration automates multi-VM recovery in the correct boot order.','Failover testing runs VMs in isolation mode (separate network) to verify recoverability without production impact.','Cloud servers run in Acronis Cloud infrastructure; public IP and VPN connectivity options are available.'],
+  'Acronis Academy|Backup & Recovery|RTO/RPO planning': ['RPO (Recovery Point Objective): maximum acceptable data loss, defined in time (e.g., 1 hour = hourly backups).','RTO (Recovery Time Objective): maximum acceptable downtime, drives choice of restore method (file restore vs. instant VM).','Instant Restore (Run VM from Backup) achieves near-zero RTO by running a VM directly from backup storage.','For critical systems: combine continuous backup (RPO <15 min) with instant restore capability (RTO <5 min).'],
+  'Acronis Academy|Security & Compliance|Encryption': ['Backup data is encrypted with AES-256 at rest; the encryption password is customer-defined and not stored by Acronis.','Encryption can be applied per Protection Plan; losing the password means permanent data loss—document it.','Transport encryption uses TLS 1.2+ for all data in transit between agent, management server, and cloud storage.','Hardware-based encryption is supported on physical appliances for improved performance.'],
+  'Acronis Academy|Security & Compliance|Access control': ['Role-based access: Company Admin, Backup Admin, Read-Only Operator, and custom roles are available.','Multi-factor authentication (MFA) is enforced per user; supports TOTP apps (Google Authenticator, Authy).','IP allowlisting restricts management console access to specific source IP ranges.','Single Sign-On (SSO) integration with Azure AD and Okta is available for enterprise tenants.'],
+  'Acronis Academy|Security & Compliance|Audit logging': ['All user actions (login, plan changes, device onboarding, manual backups) are logged with timestamp and user identity.','Audit logs are exportable to CSV or sent to SIEM via syslog integration.','Retention of audit logs is configurable; default is 90 days in the cloud console.','Review audit logs after any security incident to establish timeline of administrator actions.'],
+  'Acronis Academy|Security & Compliance|Compliance reporting': ['Pre-built compliance reports cover: backup status by device, data protection coverage gaps, and storage usage.','Scheduled reports can be emailed to stakeholders on a daily, weekly, or monthly basis.','The Protection Status report identifies devices without active protection plans (coverage gap analysis).','Custom reports can be built via the API and integrated into business intelligence tools.'],
+  'Acronis Academy|Advanced Topics|Cloud-to-cloud': ['Cloud-to-cloud backup covers Microsoft 365 (Exchange, SharePoint, OneDrive, Teams) and Google Workspace.','Microsoft 365 backup requires granting Acronis an OAuth app registration with appropriate Graph API permissions.','Retention policies for cloud-to-cloud data are set independently from on-premises backup plans.','Point-in-time recovery allows restoring individual mailbox items, files, or Teams messages from any restore point.'],
+  'Acronis Academy|Advanced Topics|Ransomware protection': ['Acronis Active Protection uses behavioral AI to detect ransomware-like encryption patterns in real time.','On detection, the affected process is killed and the files are automatically restored from the last clean backup.','Suspicious process detection generates an alert and can optionally trigger an immediate backup before blocking.','The whitelist prevents false positives on legitimate encryption software (e.g., 7-Zip, VeraCrypt).'],
+  'Acronis Academy|Advanced Topics|Patch management': ['Acronis Patch Management scans managed devices for missing OS and third-party software patches.','Patch policies define approval rules (auto-approve, manual-approve), scheduling, and exclusion lists.','Patching can be deferred until after a backup completes to ensure a rollback point exists.','Vulnerability assessment identifies CVEs on managed endpoints without requiring patch deployment.'],
+  'Acronis Academy|Advanced Topics|Performance tuning': ['Backup window throttling limits CPU and network usage during business hours.','Concurrent backup tasks per device and per storage node are tunable to prevent overload.','Deduplication and compression are configured at the storage node level; global dedup reduces storage 30–70%.','WAN acceleration settings optimize backup transfer over high-latency or low-bandwidth links.'],
+  // SC-900 ──────────────────────────────────────────────────────────────────
+  'SC-900|Security Concepts|Shared responsibility': ['In the cloud, responsibility is split between the cloud provider and the customer based on service model.','Provider always handles: physical datacenter, physical network, physical hosts.','Customer always handles: data, accounts, access management, and identities regardless of service model.','IaaS: customer manages OS, runtime, apps. PaaS: provider adds OS + runtime. SaaS: provider adds everything except data + access.'],
+  'SC-900|Security Concepts|Defense-in-depth': ['Defense-in-depth layers multiple security controls so that failure of one layer does not compromise the asset.','7 layers from outermost to innermost: Physical → Network → Perimeter → Identity & Access → Application → Data.','Each layer slows attackers and provides a detection opportunity; no single control is the sole barrier.','Microsoft Defender products map to specific layers: Defender for Endpoint = device layer, Azure Firewall = network perimeter.'],
+  'SC-900|Security Concepts|Zero trust': ['Zero trust operates on "never trust, always verify" — no implicit trust from network location or identity.','Three pillars: Verify explicitly (always authenticate), Use least privilege, Assume breach.','Zero trust replaces the perimeter "castle-and-moat" model where internal traffic was implicitly trusted.','Microsoft Zero Trust covers six pillars: Identities, Devices, Applications, Data, Infrastructure, Networks.'],
+  'SC-900|Security Concepts|Threat landscape': ['Common threat actors: nation-states, cybercriminals, hacktivists, insider threats, and script kiddies.','Top attack vectors: phishing/social engineering, credential stuffing, unpatched vulnerabilities, supply chain.','MITRE ATT&CK framework catalogues adversary tactics, techniques, and procedures (TTPs) used in real attacks.','Microsoft Secure Score measures an organization\'s security posture; higher score = more controls implemented.'],
+  'SC-900|Azure Identity & Access|Azure AD': ['Azure Active Directory (now Microsoft Entra ID) is Microsoft\'s cloud-based identity and access management service.','A tenant is a dedicated Azure AD instance for an organization, identified by a unique tenant ID.','Azure AD Free includes SSO, B2B collaboration, MFA, and basic audit logs; P1/P2 add Conditional Access and PIM.','Objects in Azure AD: Users, Groups, Applications (service principals), Managed Identities, Devices.'],
+  'SC-900|Azure Identity & Access|Authentication': ['Authentication (AuthN) proves identity; Authorization (AuthZ) grants permissions — distinct steps.','Azure AD supports: password hash sync, pass-through authentication, and federated authentication (ADFS).','MFA methods: Microsoft Authenticator app (preferred), FIDO2 security keys, SMS, phone call.','Passwordless authentication options: Windows Hello for Business, FIDO2 keys, Microsoft Authenticator app.'],
+  'SC-900|Azure Identity & Access|Authorization': ['Authorization determines what an authenticated identity can do; implemented via RBAC roles in Azure.','Azure built-in RBAC roles: Owner (full access), Contributor (no access management), Reader (read-only).','Role assignments are scoped: Management Group → Subscription → Resource Group → Resource.','Privileged Identity Management (PIM) provides just-in-time elevation of privileged roles with approval and time limits.'],
+  'SC-900|Azure Identity & Access|Conditional access': ['Conditional Access is Azure AD\'s policy engine that makes real-time access decisions based on signals.','Signals: user identity/group, IP location, device compliance, application being accessed, sign-in risk score.','Outcomes: Grant access (with/without MFA/compliant device), Block access.','Report-only mode lets you see who a policy would affect before enforcing it — always test first.'],
+  'SC-900|Compliance & Privacy|Compliance offerings': ['Microsoft Compliance Manager tracks compliance posture and provides improvement actions mapped to regulations.','The Compliance Score measures how many recommended controls are implemented across frameworks.','Microsoft meets 90+ compliance certifications including ISO 27001, SOC 2, HIPAA, GDPR, FedRAMP.','Trust Center (microsoft.com/trust) documents Microsoft\'s compliance certifications and privacy commitments.'],
+  'SC-900|Compliance & Privacy|Data protection': ['Microsoft Purview Information Protection classifies, labels, and protects sensitive data across Microsoft 365.','Sensitivity labels (Confidential, Public, etc.) apply visual markings and optional encryption to files/emails.','Data Loss Prevention (DLP) policies detect and prevent sharing of sensitive info (credit cards, SSNs) outside the org.','Insider Risk Management detects risky user behavior (bulk download, data exfiltration) using machine learning signals.'],
+  'SC-900|Compliance & Privacy|Privacy laws': ['GDPR (EU): covers personal data of EU residents; requires lawful basis for processing, breach notification within 72h.','CCPA (California): gives California residents rights to know, delete, and opt-out of sale of personal data.','HIPAA (US): protects health information (PHI); covered entities and business associates must comply.','Microsoft\'s Data Privacy Addendum (DPA) documents how Microsoft processes data as a GDPR data processor.'],
+  'SC-900|Compliance & Privacy|Governance': ['Microsoft Purview Compliance Portal is the central hub for compliance tools: DLP, Audit, eDiscovery, Retention.','Retention policies keep or delete content after a specified period to meet legal and regulatory requirements.','Audit logs capture user and admin activity in Microsoft 365; Advanced Audit provides longer retention (1 year+).','eDiscovery (Content Search, Core, Advanced) locates and exports data for legal investigations.'],
+  'SC-900|Azure Security Services|Azure Defender': ['Microsoft Defender for Cloud (formerly Azure Security Center + Azure Defender) provides unified CSPM and workload protection.','CSPM (Cloud Security Posture Management) assesses your resources against security benchmarks and provides a Secure Score.','Workload protection plans cover: VMs, databases, containers, App Service, Key Vault, DNS, and ARM.','Defender for Cloud generates security alerts; alerts are investigated and triaged in the Alerts blade.'],
+  'SC-900|Azure Security Services|Key Vault': ['Azure Key Vault stores and manages secrets, encryption keys, and certificates in a hardware-secured vault.','Access is controlled via Key Vault Access Policies or Azure RBAC (recommended for new vaults).','Keys can be software-protected or HSM-protected (hardware security module); HSM requires Premium tier.','App integrations use Managed Identity to access Key Vault secrets without embedding credentials in code.'],
+  'SC-900|Azure Security Services|Sentinel': ['Microsoft Sentinel is a cloud-native SIEM (Security Information and Event Management) and SOAR platform.','Data connectors ingest logs from Azure AD, Microsoft 365, Defender, and third-party sources into Log Analytics.','Analytics rules detect threats using KQL queries; built-in rules cover MITRE ATT&CK techniques.','Playbooks (Azure Logic Apps) automate responses to incidents: notify, isolate device, block IP.'],
+  'SC-900|Azure Security Services|Security Center': ['Azure Security Center is now consolidated into Microsoft Defender for Cloud (same product, renamed 2021).','The Secure Score is a percentage showing how many recommended security controls are implemented.','Recommendations are grouped by control (e.g., "Enable MFA", "Apply system updates"); each has a score impact.','Regulatory Compliance dashboard maps your configuration to NIST, CIS, PCI-DSS, and other standards.'],
+  // AZ-104 ──────────────────────────────────────────────────────────────────
+  'AZ-104|Compute Resources|VMs': ['VM size families: B (burstable), D (general purpose), E (memory optimized), F (compute optimized), N (GPU).','Availability Sets protect against rack failures using Fault Domains (FD) and Update Domains (UD); 99.95% SLA.','Availability Zones are physically separate datacenters in a region; 99.99% SLA with two or more zones.','Azure Spot VMs use spare capacity at up to 90% discount but can be evicted with 30 s notice; use for batch workloads.'],
+  'AZ-104|Compute Resources|App Services': ['App Service hosts web apps, APIs, and mobile backends on managed infrastructure (PaaS).','Service Plans define compute resources; Free/Shared (for dev), Basic, Standard, Premium, Isolated.','Deployment slots (Standard+) provide staging environments; swap traffic with zero downtime on slot swap.','Auto-scaling rules trigger based on CPU, memory, HTTP queue length, or custom metrics.'],
+  'AZ-104|Compute Resources|Container instances': ['Azure Container Instances (ACI) run containers on-demand without managing VMs — simplest container option.','No orchestration; suitable for short-lived tasks, CI/CD runners, and simple isolated containers.','Container Groups share lifecycle, network, and storage; similar to a Kubernetes pod.','ACI integrates with ACR (Azure Container Registry) for private image storage.'],
+  'AZ-104|Compute Resources|Scaling': ['Manual scaling: change VM count or app service plan tier manually.','Vertical scaling (scale up): increase VM size (more vCPU/RAM); requires restart.','Horizontal scaling (scale out): add more VM instances; no restart required.','VMSS (Virtual Machine Scale Sets) automatically scale VM count based on metrics or schedule.'],
+  'AZ-104|Storage & Databases|Storage accounts': ['Azure Storage accounts provide Blob, File, Queue, and Table storage under one namespace.','Access tiers for Blob: Hot (frequent access), Cool (infrequent), Cold, Archive (lowest cost, high retrieval time).','Replication options: LRS (3 copies in one DC), ZRS (3 DCs in one region), GRS/GZRS (geo-redundant).','Storage Account firewall restricts access to specific VNet subnets or IP ranges.'],
+  'AZ-104|Storage & Databases|Managed disks': ['Managed disks are the recommended disk type for Azure VMs; Microsoft manages the storage account.','Types: Ultra Disk (highest IOPS), Premium SSD (production), Standard SSD (dev/test), Standard HDD (archive).','Disk snapshots are incremental and can be used to create new disks or restore.','Disk encryption: Server-Side Encryption (SSE) with platform or customer-managed keys, or Azure Disk Encryption (ADE) with BitLocker/DM-Crypt.'],
+  'AZ-104|Storage & Databases|SQL Database': ['Azure SQL Database is a fully managed PaaS relational database based on SQL Server.','Purchasing models: DTU (bundled compute+storage) or vCore (separate compute, storage, license).','Elastic pools share resources across multiple databases; cost-effective for SaaS apps with unpredictable usage.','Geo-replication creates readable secondary replicas in other regions; failover group provides automatic failover.'],
+  'AZ-104|Storage & Databases|Cosmos DB': ['Cosmos DB is a globally distributed, multi-model NoSQL database with single-digit millisecond latency.','APIs: SQL (Core), MongoDB, Cassandra, Gremlin (graph), Table — choose based on existing app compatibility.','Consistency levels: Strong, Bounded Staleness, Session (default), Consistent Prefix, Eventual.','Throughput is provisioned in RU/s (Request Units); autoscale mode adjusts between min and max RU/s.'],
+  'AZ-104|Networking|Virtual networks': ['A VNet is the fundamental networking primitive; address space is defined in CIDR notation.','Subnets segment the VNet; NSGs applied at subnet level control inbound/outbound traffic.','VNet peering connects VNets within or across regions on the Microsoft backbone (not public internet).','Service Endpoints keep PaaS traffic (Storage, SQL) on the backbone; Private Endpoints give PaaS a private IP in your VNet.'],
+  'AZ-104|Networking|Load balancing': ['Azure Load Balancer (L4): public or internal; distributes TCP/UDP traffic; 99.99% SLA with two+ VMs.','Application Gateway (L7): HTTP/HTTPS; URL-based routing, WAF, SSL termination.','Azure Front Door: global L7 load balancer with anycast routing, caching, WAF, and failover.','Traffic Manager: DNS-based global load balancer; routing methods: Priority, Weighted, Performance, Geographic.'],
+  'AZ-104|Networking|DNS': ['Azure DNS hosts DNS zones and records in Azure using the same credentials, billing, and support.','Private DNS Zones resolve names within VNets without public DNS entries; link zones to VNets for auto-registration.','DNS records: A, AAAA, CNAME, MX, NS, PTR, SOA, SRV, TXT are all supported.','Alias records link to Azure resources (Public IP, Traffic Manager, Front Door) and auto-update when resource IP changes.'],
+  'AZ-104|Networking|VPN & ExpressRoute': ['VPN Gateway creates encrypted site-to-site (S2S) or point-to-site (P2S) tunnels over the internet.','SKUs: Basic (dev only), VpnGw1–5; higher SKUs support more tunnels and higher throughput.','ExpressRoute provides a private dedicated circuit from on-premises to Azure; no public internet traversal.','ExpressRoute FastPath bypasses the gateway for ultra-low latency in high-throughput scenarios.'],
+  'AZ-104|Management & Monitoring|Azure Monitor': ['Azure Monitor collects Metrics (numeric, 93-day retention) and Logs (KQL in Log Analytics workspace).','Diagnostic Settings route platform logs and metrics to: Log Analytics, Storage Account, Event Hubs.','Alerts fire on metric thresholds or KQL log queries; Action Groups define notifications and automations.','Workbooks provide interactive visualizations of monitoring data using KQL queries.'],
+  'AZ-104|Management & Monitoring|Automation': ['Azure Automation provides runbooks (PowerShell/Python), Desired State Configuration (DSC), and update management.','Update Management tracks and deploys OS patches across Azure and on-premises VMs.','Runbooks can be triggered by schedule, webhook, or Azure Monitor alerts.','Hybrid Runbook Worker extends automation to on-premises machines via a local agent.'],
+  'AZ-104|Management & Monitoring|Backup & recovery': ['Azure Backup stores backups in a Recovery Services Vault; supports VMs, SQL, SAP HANA, Files, Blobs.','Backup policies define schedule (daily/weekly) and retention (daily/weekly/monthly/yearly restore points).','Soft delete retains deleted backup data for 14 additional days to protect against accidental/malicious deletion.','Azure Site Recovery (ASR) replicates VMs to a secondary region for DR; orchestrated failover with custom recovery plans.'],
+  'AZ-104|Management & Monitoring|Cost management': ['Azure Cost Management + Billing provides spending dashboards, budgets, alerts, and cost analysis.','Budgets trigger alerts or Azure Automation actions when spending reaches defined thresholds.','Cost-saving options: Reserved Instances (1 or 3 year commit, up to 72% savings), Savings Plans, Hybrid Benefit (use existing Windows/SQL licenses).','Tags applied to resources enable cost allocation reporting by department, project, or environment.'],
+  // AI-102 ──────────────────────────────────────────────────────────────────
+  'AI-102|AI Services Overview|Computer Vision': ['Azure AI Vision (formerly Computer Vision) provides image analysis, OCR, spatial analysis, and face detection.','Analyze Image API returns tags, objects, captions, celebrities, landmarks, color scheme, and adult content flags.','The Read API (OCR) is async and handles dense text in images and PDFs; returns word-level bounding polygons.','Custom Vision lets you train image classification or object detection models with your own labeled images.'],
+  'AI-102|AI Services Overview|Language services': ['Azure AI Language (formerly Text Analytics + LUIS + QnA Maker) is the unified NLP service.','Capabilities: sentiment analysis, key phrase extraction, NER, PII detection, language detection, summarization.','Custom text classification and custom NER let you train domain-specific models on your own labeled data.','Conversational Language Understanding (CLU) replaces LUIS for intent recognition and entity extraction.'],
+  'AI-102|AI Services Overview|Search': ['Azure AI Search (formerly Cognitive Search) is a fully managed search-as-a-service platform.','Core components: Index (schema + data), Indexer (pulls data from source), Skillset (AI enrichment), Data Source.','AI enrichment applies built-in skills (OCR, entity extraction, translation) or custom skills during indexing.','Semantic ranking reorders results using language models for more relevant answers to natural language queries.'],
+  'AI-102|AI Services Overview|Bot Framework': ['Azure Bot Service + Bot Framework SDK enables building conversational bots for multiple channels.','Channels: Teams, Web Chat, Facebook Messenger, Slack, SMS, Email, and custom webhook channels.','QnA Maker (now Azure AI Language Q&A) provides FAQ-style bots from existing knowledge base documents.','Bot Framework Composer is a visual authoring tool for building bots without writing all dialog code manually.'],
+  'AI-102|Vision & Image Analysis|Image classification': ['Custom Vision image classification assigns one or more tags to an image (multi-class or multi-label).','Minimum training images: 5 per tag recommended, but more improves accuracy significantly.','Training iterations produce a model version; compare Performance metrics (Precision, Recall, AP) between iterations.','Export options: CoreML (iOS), TensorFlow (Android/Linux), ONNX (Windows), Docker containers for offline use.'],
+  'AI-102|Vision & Image Analysis|Object detection': ['Object detection returns bounding boxes, labels, and confidence scores for each detected object.','Training requires bounding box annotations drawn around objects in training images.','mAP (mean Average Precision) is the primary accuracy metric for object detection models.','ONNX export enables running the model locally on edge devices without cloud API calls.'],
+  'AI-102|Vision & Image Analysis|OCR': ['The Read API handles both printed and handwritten text; supports 164 languages.','Results include: page, line, word, bounding polygon, and confidence score for each word.','The Analyze API\'s OCR feature is synchronous for simple documents; Read API is async for complex/multi-page docs.','For form data extraction (key-value pairs, tables), use Azure AI Document Intelligence (Form Recognizer) instead.'],
+  'AI-102|Vision & Image Analysis|Face detection': ['Azure Face API detects faces and returns bounding box, landmarks (eyes, nose, mouth), and optional attributes.','Face verification compares two face images to determine if they are the same person (1:1 comparison).','Face identification compares a face against a PersonGroup to find the matching person (1:N comparison).','Responsible AI requirements: access to Face identification features requires application and approval from Microsoft.'],
+  'AI-102|Language & NLP|Text analysis': ['Sentiment analysis returns positive/neutral/negative scores for document and sentence level.','Opinion Mining (aspect-based sentiment) extracts aspect + sentiment pairs: "battery life" → positive.','NER returns entity type, sub-type, text, offset, and confidence; linked entities resolve to Wikipedia/Bing URLs.','PII detection identifies and optionally redacts sensitive data: names, addresses, SSNs, credit cards, phone numbers.'],
+  'AI-102|Language & NLP|Translation': ['Azure AI Translator provides real-time text translation for 100+ languages and language detection.','Transliteration converts text between scripts (e.g., Arabic to Latin) without translating the words.','Custom Translator allows training domain-specific models on parallel corpus data (source + translated pairs).','Document Translation is an async API that translates whole documents (PDF, Word, HTML) preserving formatting.'],
+  'AI-102|Language & NLP|QnA Maker': ['QnA Maker is now part of Azure AI Language as the "Question Answering" feature (CLU Answers).','Knowledge bases are built from: URLs, documents (PDF, DOCX), or manual QnA pairs.','Active Learning suggests new QnA pairs from unanswered user questions via the Suggestions feature.','Chitchat personality profiles add small-talk responses (Friendly, Professional, Witty) to the knowledge base.'],
+  'AI-102|Language & NLP|Language understanding': ['Conversational Language Understanding (CLU) replaces LUIS for intent + entity recognition in conversations.','Intents represent user goals; entities are specific data extracted from the utterance (e.g., "BookFlight" intent, "Destination" entity).','Training requires labeled utterances (examples) per intent; more examples improve accuracy.','CLU integrates with Bot Framework and Power Virtual Agents for end-to-end conversational AI.'],
+  'AI-102|Search & Knowledge Mining|Cognitive Search': ['Azure AI Search indexes structured and unstructured data from multiple sources for full-text and vector search.','Analyzers control tokenization; built-in language analyzers handle stemming and stop words per language.','Semantic ranking uses large language models to reorder results by relevance to the natural language query.','Vector search stores embedding vectors alongside document fields for semantic similarity search.'],
+  'AI-102|Search & Knowledge Mining|Indexing': ['Indexers pull data from Azure Blob, SQL Database, Cosmos DB, and Table Storage on a schedule or on-demand.','Field mappings transform source field names/values to index field names during indexing.','Merge mode re-indexes changed documents; full mode re-indexes all documents from scratch.','Indexer status and error details are available via the Azure Portal or Search REST API.'],
+  'AI-102|Search & Knowledge Mining|Enrichment': ['AI enrichment applies cognitive skills during indexing: OCR, language detection, entity extraction, key phrase extraction, translation.','Custom skills are Azure Functions or web APIs that extend enrichment with domain-specific logic.','A knowledge store persists enriched data (projections) into Blob or Table storage for downstream analysis.','Skillsets define the skill pipeline; each skill\'s output becomes an enrichment annotation in the document tree.'],
+  'AI-102|Search & Knowledge Mining|Query optimization': ['Full Lucene query syntax supports field-scoped queries, fuzzy matching, proximity, and regex.','Simple query syntax is user-friendly with AND/OR/NOT operators; suitable for end-user search boxes.','Scoring profiles boost results based on field weights, freshness, and distance functions.','Facets enable drill-down navigation by aggregating counts of unique values for filter fields.'],
+  // AZ-204 ──────────────────────────────────────────────────────────────────
+  'AZ-204|Compute Solutions|App Service': ['App Service supports .NET, Java, Node.js, Python, PHP, and Ruby; managed PaaS with auto-patching.','Service Plan tiers: Free/Shared (no SLA), Basic (manual scale), Standard (auto-scale, slots), Premium (VNet integration), Isolated (dedicated).','Deployment: GitHub Actions, Azure DevOps, ZIP deploy, FTP, or container image from ACR.','Custom domains and managed TLS certificates can be added at Standard tier and above.'],
+  'AZ-204|Compute Solutions|Azure Functions': ['Functions are event-driven serverless compute; triggers include HTTP, Timer, Blob, Queue, Service Bus, Event Grid, Cosmos DB.','Bindings declaratively connect input/output to services; no SDK boilerplate needed in function code.','Hosting plans: Consumption (pay-per-execution, cold starts), Flex Consumption, Premium (warm instances, VNet), Dedicated (App Service Plan).','Durable Functions add stateful orchestration: function chaining, fan-out/fan-in, async HTTP API, human interaction patterns.'],
+  'AZ-204|Compute Solutions|Containers': ['Azure Container Instances (ACI): on-demand containers with no orchestration; fastest startup.','Azure Kubernetes Service (AKS): managed Kubernetes; use for complex microservices with auto-scaling needs.','ACR (Azure Container Registry): private container image registry; geo-replication and vulnerability scanning.','Docker multi-stage builds reduce final image size by separating build tools from runtime dependencies.'],
+  'AZ-204|Compute Solutions|Deployment': ['Deployment slots: staging slot receives code → validate → swap to production (zero-downtime blue/green deployment).','ARM templates / Bicep provide infrastructure as code for repeatable deployments.','Azure DevOps pipelines automate build, test, and release; GitHub Actions is the cloud-native alternative.','Canary deployments gradually shift traffic from old to new version using Traffic Manager or Front Door weight-based routing.'],
+  'AZ-204|Data & Storage|Cosmos DB': ['Cosmos DB partition key selection is critical: choose high-cardinality keys that distribute reads/writes evenly.','RU (Request Unit) cost = function of item size, query complexity, and consistency level; estimate with Capacity Calculator.','Change feed enables event-driven architectures by streaming every insert/update in insertion order per partition.','TTL (Time-to-Live) automatically deletes documents after a specified number of seconds; set at collection or item level.'],
+  'AZ-204|Data & Storage|Blob storage': ['Blob types: Block Blob (files, images, videos), Page Blob (VM disks, random-access), Append Blob (logs).','Lifecycle management policies automatically tier or delete blobs based on last-modified or last-accessed time.','SAS (Shared Access Signature) tokens grant time-limited, permission-scoped access without sharing account keys.','Azure CDN integrates with Blob storage to cache static content at edge PoPs worldwide.'],
+  'AZ-204|Data & Storage|Table storage': ['Table storage is a key-value NoSQL store; each entity has PartitionKey + RowKey as the composite primary key.','PartitionKey determines co-location; choose keys that distribute load while keeping related data in the same partition.','Table storage is cheaper than Cosmos DB Table API but lacks geo-distribution and secondary indexes.','Access via REST API, .NET SDK (TableClient), or Azure Storage Explorer.'],
+  'AZ-204|Data & Storage|Data migration': ['Azure Data Factory orchestrates data pipelines: copy, transform, and move data between 90+ source/sink types.','Azure Migrate provides assessment and migration tooling for servers, databases, and web apps.','Azure Database Migration Service (DMS) migrates databases to Azure with minimal downtime using continuous sync.','Azcopy is a command-line tool for high-speed Blob and File storage uploads/downloads/syncs.'],
+  'AZ-204|APIs & Integration|REST APIs': ['REST APIs use HTTP verbs (GET, POST, PUT, PATCH, DELETE) and status codes (200, 201, 400, 404, 500).','Idempotent operations: GET, PUT, DELETE are idempotent; POST is not (calling POST twice creates two resources).','OpenAPI (Swagger) specification documents API endpoints, parameters, and response schemas.','Versioning strategies: URL path (/v1/resource), query string (?api-version=2024-01), or custom header.'],
+  'AZ-204|APIs & Integration|API Management': ['APIM is a gateway that handles auth, rate limiting, transformation, caching, and analytics for backend APIs.','Policies are XML applied at gateway/product/API/operation scope in inbound/backend/outbound/on-error stages.','Subscription keys grant access to products; rate-limit-by-key and quota-by-key policies control consumption.','The Developer Portal is auto-generated; consumers can discover, read docs, test APIs, and subscribe.'],
+  'AZ-204|APIs & Integration|Logic Apps': ['Logic Apps are low-code integration workflows triggered by events; 400+ connectors to SaaS and Azure services.','Workflow types: Consumption (serverless, per-execution billing) and Standard (hosted on single-tenant runtime).','Connector types: Built-in (run in Logic Apps runtime), Managed (API-based, run in Azure connector service).','Error handling uses try/catch scopes; configure retry policies on individual actions for transient failures.'],
+  'AZ-204|APIs & Integration|Event Hubs': ['Event Hubs is a big-data streaming platform ingesting millions of events per second.','Partitions allow parallel consumer groups to read independently; partition count is set at creation and cannot decrease.','Consumer groups provide independent read positions per consumer application; multiple apps read the same stream.','Capture automatically saves event streams to Blob storage or ADLS Gen2 in Avro or Parquet format.'],
+  'AZ-204|Authentication & Security|Identity platform': ['Microsoft Identity Platform (MSAL) handles OAuth 2.0 and OpenID Connect flows for Azure AD authentication.','Auth flows: Authorization Code + PKCE (SPA/mobile), Client Credentials (service-to-service), Device Code (CLI), On-Behalf-Of (API to API).','App registrations define client ID, redirect URIs, and API permissions; client secrets or certificates are used for confidential clients.','Scopes define permissions; user.read, mail.read are Microsoft Graph delegated permissions requiring user consent.'],
+  'AZ-204|Authentication & Security|Key Vault': ['Key Vault stores secrets (connection strings, passwords), keys (RSA, EC), and certificates (X.509).','Access policies or RBAC control which identities can perform which operations (Get, Set, List, Delete).','Soft-delete (default enabled) retains deleted secrets/keys for 90 days; purge protection prevents permanent deletion.','Key rotation policies automatically create new key versions on a schedule; app integrates via Key Vault references.'],
+  'AZ-204|Authentication & Security|Managed identity': ['Managed Identity provides an automatically managed Azure AD identity for Azure resources — no credential management.','System-assigned MI: tied to resource lifecycle; deleted when resource is deleted.','User-assigned MI: standalone resource; can be shared across multiple resources.','Assign MI to resource → grant MI access to Key Vault/Storage/etc. → code calls DefaultAzureCredential (no secrets in code).'],
+  'AZ-204|Authentication & Security|RBAC': ['Azure RBAC controls who can do what on which Azure resources via role assignments.','Role assignment = Security Principal + Role Definition + Scope.','Custom roles define specific allowed/not-allowed actions when built-in roles are too broad or too narrow.','RBAC operates at the control plane (manage resources); some services also have their own data plane RBAC (e.g., Storage Blob Data Contributor).'],
+  // AZ-305 ──────────────────────────────────────────────────────────────────
+  'AZ-305|Design Infrastructure|Scalability': ['Design for horizontal scale-out rather than vertical scale-up to avoid single-VM ceilings.','Stateless application tiers scale easily; store session state in Redis Cache or Cosmos DB instead of local memory.','VMSS with autoscale rules and scale-set policies handles variable load automatically.','Queue-based load leveling (Service Bus / Storage Queue) decouples producers from consumers to absorb traffic spikes.'],
+  'AZ-305|Design Infrastructure|High availability': ['Define RTO (max downtime) and RPO (max data loss) per workload tier; these drive architecture choices.','Two-region active-active provides lowest RTO but highest cost; active-passive with auto-failover is a cost-effective middle ground.','Azure Load Balancer + VMSS across Availability Zones achieves 99.99% SLA.','Health Model: define what "healthy" means for each component; monitor and alert on that definition, not generic metrics.'],
+  'AZ-305|Design Infrastructure|Disaster recovery': ['Azure Site Recovery (ASR) replicates VMs to a DR region; recovery plans automate ordered failover.','Pilot Light DR: minimal resources running in DR region (just AD + DNS), scaled up on failover.','Warm Standby: partially scaled DR environment running; faster failover, higher cost than pilot light.','Test failover (no production impact) should run quarterly to validate RTO and runbooks.'],
+  'AZ-305|Design Infrastructure|Network design': ['Hub-and-spoke topology: central hub VNet (shared services: firewall, DNS, bastion) + spoke VNets per workload.','Azure Firewall or NVA (Network Virtual Appliance) in the hub inspects all spoke-to-spoke and internet-bound traffic.','Private Endpoints expose PaaS services inside VNets; disable public network access on PaaS after PE is created.','ExpressRoute + VPN Gateway in coexistence: ExpressRoute for primary traffic, VPN as failback circuit.'],
+  'AZ-305|Design Applications|App architecture': ['Microservices decouple components for independent scaling and deployment; use AKS or Container Apps.','Event-driven architecture: Event Grid for reactive integrations, Event Hubs for streaming, Service Bus for reliable messaging.','API Gateway pattern (APIM) abstracts backend services from consumers; enables versioning, auth, and throttling centrally.','The Strangler Fig pattern incrementally migrates monolith functionality to microservices without a risky big-bang rewrite.'],
+  'AZ-305|Design Applications|Database design': ['Polyglot persistence: use the right database type per use case — relational (SQL) for transactions, NoSQL for scale, cache for read performance.','Read replicas offload reporting queries from the primary; Azure SQL read replicas, Cosmos DB multi-region reads.','CQRS (Command Query Responsibility Segregation) uses separate read and write models for high-throughput systems.','Data partitioning strategy (horizontal sharding) distributes load; Cosmos DB partitions automatically by partition key.'],
+  'AZ-305|Design Applications|Caching': ['Azure Cache for Redis provides in-memory caching to reduce database load and latency.','Cache-aside pattern: application checks cache first, on miss reads from DB and populates cache.','Output caching: store rendered API/page responses in cache; appropriate for infrequently changing data.','TTL (expiry) balances freshness vs. cache efficiency; critical data should have short TTLs or be evicted on write.'],
+  'AZ-305|Design Applications|Messaging patterns': ['Azure Service Bus: enterprise messaging with queues (competing consumers) and topics/subscriptions (pub/sub).','Azure Event Grid: event routing with push delivery; designed for reactive event-driven integrations.','Competing Consumers pattern: multiple workers consume from a queue in parallel; scales naturally with load.','Outbox pattern: atomically write to DB and message outbox table; a separate relay publishes messages ensuring exactly-once delivery.'],
+  'AZ-305|Design Migration|Assessment': ['Azure Migrate is the central hub for server, database, and web app discovery and assessment.','Dependency analysis (agentless or agent-based) maps communication between servers to identify migration groups.','The TCO Calculator estimates cost savings of migrating on-premises workloads to Azure.','Business case in Azure Migrate generates executive-level ROI reports with payback period estimates.'],
+  'AZ-305|Design Migration|Migration planning': ['Migration waves group servers by dependency and complexity; migrate low-risk servers first to build confidence.','6Rs: Rehost (lift-and-shift), Replatform (minor optimization), Refactor (PaaS), Rearchitect (redesign), Rebuild, Retire.','Rehost (IaaS) is fastest; Azure Migrate Server Migration handles physical/VMware/Hyper-V to Azure VM.','Database migration: Azure Database Migration Service for SQL Server → Azure SQL with near-zero downtime using online mode.'],
+  'AZ-305|Design Migration|Hybrid scenarios': ['Azure Arc extends Azure management (Policy, Defender, Monitor, Kubernetes) to on-premises and multi-cloud resources.','Azure Stack HCI runs Azure services locally in the datacenter for data sovereignty and low-latency needs.','ExpressRoute Private Peering connects on-premises to Azure VNets; Microsoft Peering connects to Azure public services.','Active Directory hybrid identity: Azure AD Connect syncs on-premises AD to Azure AD; pass-through auth or hash sync.'],
+  'AZ-305|Design Migration|Cost optimization': ['Right-size VMs before migrating: Azure Migrate assessment recommendations are based on performance data.','Reserved Instances (1- or 3-year) provide up to 72% savings over pay-as-you-go for predictable workloads.','Azure Hybrid Benefit applies existing Windows Server and SQL Server licenses to Azure VMs — significant savings.','Auto-shutdown schedules (Azure Automation / Dev Center) turn off non-production VMs outside business hours.'],
+  'AZ-305|Governance & Security|Identity architecture': ['Azure AD as single identity plane: federate all apps (SaaS, on-prem, custom) to Azure AD for SSO.','PIM (Privileged Identity Management) enforces JIT (just-in-time) elevation with approval and time limits for privileged roles.','Entitlement Management in Identity Governance automates access requests, approvals, and periodic access reviews.','B2B collaboration federates with external Azure AD tenants or identity providers; B2C handles customer identity at scale.'],
+  'AZ-305|Governance & Security|Security design': ['Zero trust network access: never put workloads directly on a flat network; use micro-segmentation (NSG/firewall per workload).','Threat modeling (STRIDE) identifies Spoofing, Tampering, Repudiation, Information disclosure, Denial of service, Elevation of privilege threats.','DevSecOps: shift security left — integrate Defender for DevOps, secret scanning, and SAST into CI/CD pipelines.','Key rotation and managed identities eliminate hard-coded credentials; enforce via Azure Policy deny effects.'],
+  'AZ-305|Governance & Security|Compliance': ['Azure Policy enforces and audits resource configuration at scale; deny effect prevents non-compliant deployments.','Management Groups organize subscriptions; Policy and RBAC assignments inherit down the hierarchy.','Blueprints (now replaced by Template Specs + Policy) package policies, roles, and ARM templates for repeatable compliant environments.','Microsoft Defender for Cloud Regulatory Compliance dashboard maps resource posture to specific regulation controls.'],
+  'AZ-305|Governance & Security|Cost management': ['Landing Zone design includes cost governance: budgets per subscription, tags for cost allocation, and auto-shutdown policies.','Azure Cost Management Exports send daily/monthly cost data to Storage Account for custom BI reporting (Power BI, Excel).','FinOps practices: allocate costs to business units via tags, review Advisor cost recommendations weekly, use Savings Plans for flexible compute commitments.','Committed-use contracts (Reserved Instances, Savings Plans) should cover baseline stable workloads; pay-as-you-go covers peaks.'],
+  // Microsoft Study ─────────────────────────────────────────────────────────
+  'Microsoft Study|Azure Fundamentals|Cloud concepts': ['Cloud computing provides on-demand resources (compute, storage, networking) over the internet with pay-as-you-go pricing.','Service models: IaaS (you manage OS+), PaaS (you manage apps+data), SaaS (you manage data only).','Deployment models: Public (Azure), Private (on-prem cloud stack), Hybrid (connected mix of both).','Key benefits: high availability, scalability, elasticity, agility, geo-distribution, disaster recovery, and CapEx-to-OpEx shift.'],
+  'Microsoft Study|Azure Fundamentals|Core services': ['Compute: VMs, App Service, AKS, Functions, Container Instances.','Storage: Blob, Files, Queues, Tables, Managed Disks.','Networking: VNet, Load Balancer, Application Gateway, VPN Gateway, ExpressRoute, DNS.','Databases: Azure SQL, Cosmos DB, MySQL, PostgreSQL, Redis Cache.'],
+  'Microsoft Study|Azure Fundamentals|Pricing & support': ['Pricing calculator estimates monthly costs before deployment; TCO calculator compares to on-premises costs.','Free tier: 12 months of popular services, 25 always-free services, $200 credit for 30 days.','Support plans: Basic (docs only), Developer ($29/mo), Standard ($100/mo), Professional Direct ($1000/mo), Premier (custom).','Azure Reservations provide up to 72% savings; applies to VMs, SQL, Cosmos DB, and other services.'],
+  'Microsoft Study|Azure Fundamentals|Azure learning paths': ['Microsoft Learn (learn.microsoft.com) provides free modules, learning paths, and hands-on sandboxes.','Azure Fundamentals (AZ-900) is the entry-level exam; no prerequisites required.','SC-900, AZ-104, AZ-204, AZ-305 all have dedicated learning paths with labs on Microsoft Learn.','Sandbox labs in Microsoft Learn provide real Azure environments without needing your own subscription.'],
+  'Microsoft Study|Study Resources|Microsoft Learn modules': ['Follow the official learning path for each exam on learn.microsoft.com; each module includes knowledge checks.','Complete all modules in the exam\'s learning path; Microsoft aligns modules directly to exam objectives.','Bookmark the skill outline PDF on the exam page; it lists every measurable skill and its weight.','Use the hands-on sandboxes embedded in modules for practice without needing your own Azure subscription.'],
+  'Microsoft Study|Study Resources|Practice exams': ['Microsoft Official Practice Exams (via MeasureUp or Pearson VUE) simulate the real exam format.','Free exam simulations are available in the Microsoft Learn assessments section for each cert.','Third-party resources: Whizlabs, ExamTopics, Udemy practice tests — validate answers against official docs.','Aim for 85%+ on practice exams before scheduling the real test; identify weak areas and revisit those modules.'],
+  'Microsoft Study|Study Resources|Documentation': ['docs.microsoft.com (now learn.microsoft.com/docs) is the primary reference for all Azure services.','Each service page has: Overview, Quickstart, Tutorial, How-to guides, Concept docs, Reference, and FAQ sections.','The "What\'s new" pages track monthly feature additions; useful for staying current on exam content updates.','GitHub (github.com/MicrosoftDocs) hosts docs source files; PRs welcome for corrections — great for learning deeply.'],
+  'Microsoft Study|Study Resources|Video tutorials': ['Microsoft Learn Show on YouTube provides official Azure walkthrough videos and new feature announcements.','John Savill\'s Azure Master Class on YouTube is comprehensive for AZ-104, AZ-305, and AZ-104 prep.','Pluralsight, A Cloud Guru, and LinkedIn Learning have structured video courses aligned to each exam.','Watch along while following in the Azure Portal — active recall + hands-on practice beats passive viewing alone.'],
+  'Microsoft Study|Exam Strategy|Question types': ['Single-answer MCQ: pick one; multiple-answer: select all that apply (instructions specify how many).','Case studies: shared scenario + 2–8 questions; read the scenario once carefully before answering any questions.','Build-a-solution (drag-and-drop): sequence steps or assemble components; tests procedural knowledge.','Hot area (clickable image): click on the correct part of a diagram (e.g., where to place a resource).'],
+  'Microsoft Study|Exam Strategy|Time management': ['Most exams allow 120–150 minutes for 40–60 questions; pace is ~2–3 minutes per question on average.','Case studies consume more time per question; budget 8–12 minutes per case study section.','Use "Mark for review" for uncertain questions; answer everything before final submission (no penalty for wrong answers).','Never leave blank answers — an educated guess is always better than no answer.'],
+  'Microsoft Study|Exam Strategy|Common pitfalls': ['"Most cost-effective" and "minimal administrative overhead" are code words for PaaS/managed services over IaaS.','Read every option carefully; Microsoft exams frequently have two very similar options where one word makes all the difference.','Know the limits and defaults: default VM OS disk size, max blob size, Cosmos DB partition key limits.','Watch for "EXCEPT" or "NOT" in question stems — easy to miss under pressure.'],
+  'Microsoft Study|Exam Strategy|Last-minute prep': ['Review flagged questions from practice exams the day before; do not cram entirely new topics.','Skim the official skill measurement outline PDF to confirm coverage of each objective area.','Sleep well the night before; exam fatigue causes careless reading errors on straightforward questions.','Arrive/log in 15 minutes early; for online proctored exams check camera, microphone, and clear-desk rules the day before.'],
+};
+
+// ─── SKILL PATH LOOKUP ────────────────────────────────────────────────────────
+const PATH_BY_CERT = {};
+SKILL_PATHS.forEach(p => p.certs.forEach(name => { PATH_BY_CERT[name] = p; }));
+
+// ─── localStorage HELPERS ─────────────────────────────────────────────────────
+const noteKey = (certId, topicKey) => `cert_note_${certId}_${topicKey}`;
+const loadNote = (certId, topicKey) => localStorage.getItem(noteKey(certId, topicKey)) || '';
+const saveNote = (certId, topicKey, text) => localStorage.setItem(noteKey(certId, topicKey), text);
+
+// ─── getProgressStats (unchanged from original) ───────────────────────────────
+const getProgressStats = (cert) => {
+  const totalHours = Object.values(cert.progress || {}).reduce((a, b) => a + b, 0);
+  const totalTopics = cert.domains.reduce((sum, d) => sum + d.topics.length, 0);
+  const daysUntilTarget = Math.ceil((new Date(cert.targetDate) - new Date()) / (1000 * 60 * 60 * 24));
+  const weeksRemaining = Math.max(1, Math.ceil(daysUntilTarget / 7));
+  const hoursPerWeek = totalHours > 0 ? (totalHours / weeksRemaining).toFixed(1) : 0;
+  const eta = parseFloat(hoursPerWeek) > 0
+    ? Math.ceil((totalTopics * 5 - totalHours) / (parseFloat(hoursPerWeek) * 7))
+    : null;
+  return {
+    totalHours,
+    totalTopics,
+    daysUntilTarget,
+    weeksRemaining,
+    hoursPerWeek,
+    estimatedCompletion: eta,
+    progressPercent: Math.min(100, Math.round((totalHours / (totalTopics * 5)) * 100)),
+    topicsDone: Object.keys(cert.progress || {}).length,
+  };
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPONENTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── ApiKeyBanner ─────────────────────────────────────────────────────────────
 const ApiKeyBanner = ({ onSave }) => {
   const [input, setInput] = useState('');
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 backdrop-blur-sm p-4">
       <div className="w-full max-w-sm bg-slate-800 rounded-2xl border border-slate-600 p-6 shadow-2xl">
+        <div className="text-3xl mb-3">🔑</div>
         <h2 className="text-lg font-bold text-white mb-1">Anthropic API Key</h2>
-        <p className="text-slate-400 text-sm mb-4">
-          Required for the AI Study Coach. Your key is stored only in this browser.
-        </p>
+        <p className="text-slate-400 text-sm mb-4">Required for the AI Study Coach. Stored only in this browser.</p>
         <input
           type="password"
           value={input}
@@ -56,117 +350,482 @@ const ApiKeyBanner = ({ onSave }) => {
           disabled={!input.startsWith('sk-')}
           className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition text-sm"
         >
-          Save &amp; Continue
+          Save &amp; Open Roadmap
         </button>
       </div>
     </div>
   );
 };
 
-/* ── Main App ──────────────────────────────────────────────────────────── */
+// ─── ProgressRing ─────────────────────────────────────────────────────────────
+const ProgressRing = ({ percent, color, size = 64 }) => {
+  const r = (size - 8) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (Math.min(percent, 100) / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', display: 'block' }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="5"/>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="5"
+        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+        style={{ transition: 'stroke-dasharray 0.6s ease' }}/>
+    </svg>
+  );
+};
+
+// ─── CertNode ─────────────────────────────────────────────────────────────────
+const CertNode = ({ cert, path, isSelected, onClick }) => {
+  const stats = getProgressStats(cert);
+  const status = stats.progressPercent >= 100 ? 'complete' : stats.totalHours > 0 ? 'active' : 'idle';
+
+  const borderStyle = status === 'active'
+    ? { border: `2px solid ${path.color}`, boxShadow: `0 0 16px ${path.color}33` }
+    : status === 'complete'
+      ? { border: `2px solid #10b981`, boxShadow: '0 0 16px rgba(16,185,129,0.25)' }
+      : { border: '2px solid rgba(255,255,255,0.1)' };
+
+  const bg = status === 'complete'
+    ? 'rgba(16,185,129,0.1)'
+    : isSelected
+      ? `rgba(${path.color.slice(1).match(/../g).map(x=>parseInt(x,16)).join(',')},0.15)`
+      : 'rgba(15,23,42,0.8)';
+
+  const shortName = cert.name.length > 12 ? cert.name : cert.name;
+
+  return (
+    <div
+      onClick={onClick}
+      className="flex-shrink-0 cursor-pointer rounded-2xl p-3 transition-all duration-200 hover:scale-105"
+      style={{ width: 148, background: bg, ...borderStyle }}
+    >
+      {/* Ring + % */}
+      <div className="relative flex items-center justify-center mb-2" style={{ height: 64 }}>
+        <ProgressRing
+          percent={stats.progressPercent}
+          color={status === 'complete' ? '#10b981' : path.color}
+          size={64}
+        />
+        <div className="absolute inset-0 flex items-center justify-center">
+          {status === 'complete'
+            ? <CheckCircle2 size={22} color="#10b981" />
+            : <span className="text-xs font-bold font-mono" style={{ color: path.color }}>
+                {stats.progressPercent}%
+              </span>
+          }
+        </div>
+      </div>
+
+      {/* Name */}
+      <p className="text-white text-xs font-bold text-center leading-tight mb-1.5 truncate" title={cert.name}>
+        {shortName}
+      </p>
+
+      {/* Status chip */}
+      <div className="flex items-center justify-center gap-1">
+        <span
+          className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+          style={
+            status === 'complete'
+              ? { background: 'rgba(16,185,129,0.2)', color: '#10b981' }
+              : status === 'active'
+                ? { background: `${path.color}25`, color: path.color }
+                : { background: 'rgba(255,255,255,0.07)', color: '#64748b' }
+          }
+        >
+          <span style={{
+            width: 5, height: 5, borderRadius: '50%', display: 'inline-block',
+            background: status === 'complete' ? '#10b981' : status === 'active' ? path.color : '#475569'
+          }}/>
+          {status === 'complete' ? 'Done' : status === 'active' ? `${stats.totalHours}h` : 'Not started'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// ─── ConnectorArrow ───────────────────────────────────────────────────────────
+const ConnectorArrow = ({ color }) => (
+  <div className="flex-shrink-0 flex items-center self-center" style={{ marginTop: -8 }}>
+    <div style={{ width: 24, height: 1.5, background: `${color}50` }}/>
+    <svg width="8" height="12" viewBox="0 0 8 12" style={{ flexShrink: 0 }}>
+      <path d="M1 1 L7 6 L1 11" fill="none" stroke={`${color}70`} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+    </svg>
+  </div>
+);
+
+// ─── SkillPathLane ────────────────────────────────────────────────────────────
+const SkillPathLane = ({ path, certObjects, selectedCertId, onSelectCert }) => {
+  const totalHours = certObjects.reduce((s, c) => s + getProgressStats(c).totalHours, 0);
+  const doneCount  = certObjects.filter(c => getProgressStats(c).progressPercent >= 100).length;
+
+  return (
+    <div className="mb-6">
+      {/* Lane header */}
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <div style={{ width: 3, height: 20, borderRadius: 2, background: path.color, flexShrink: 0 }}/>
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: path.color }}>
+          {path.emoji} {path.label}
+        </span>
+        <span className="text-slate-500 text-[10px] font-mono ml-1">
+          {doneCount}/{certObjects.length} certs · {totalHours}h
+        </span>
+      </div>
+
+      {/* Scrollable cert nodes */}
+      <div
+        className="flex items-center gap-0 overflow-x-auto pb-1"
+        style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin' }}
+      >
+        {certObjects.map((cert, i) => (
+          <React.Fragment key={cert.id}>
+            {i > 0 && <ConnectorArrow color={path.color} />}
+            <CertNode
+              cert={cert}
+              path={path}
+              isSelected={selectedCertId === cert.id}
+              onClick={() => onSelectCert(cert)}
+            />
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── TopicsTab ────────────────────────────────────────────────────────────────
+const TopicsTab = ({ cert, onLogTime }) => (
+  <div className="space-y-4">
+    {cert.domains.map((domain, didx) => (
+      <div key={didx}>
+        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{domain.name}</h4>
+        {domain.topics.map((topic, tidx) => {
+          const topicKey = `${didx}-${tidx}`;
+          const hours = cert.progress?.[topicKey] || 0;
+          return (
+            <div
+              key={tidx}
+              onClick={() => onLogTime(cert.id, topicKey, topic)}
+              className="mb-1.5 p-2.5 rounded-lg bg-slate-700/50 hover:bg-slate-700 cursor-pointer transition flex justify-between items-center text-sm"
+              style={{ borderLeft: `2px solid ${hours > 0 ? '#10b981' : '#334155'}` }}
+            >
+              <span className="text-slate-200">{topic}</span>
+              <span className={`text-xs font-mono ${hours > 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                {hours > 0 ? `${hours}h` : '+ log'}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    ))}
+  </div>
+);
+
+// ─── TopicKBSection ───────────────────────────────────────────────────────────
+const TopicKBSection = ({ topic, certId, certName, topicKey, domainName, onAskAI }) => {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState(() => loadNote(certId, topicKey));
+  const kbKey = `${certName}|${domainName}|${topic}`;
+  const concepts = KNOWLEDGE_BASE[kbKey] || [];
+
+  return (
+    <div className="mb-1.5 rounded-lg border border-slate-700/80 overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex justify-between items-center px-3 py-2.5 bg-slate-800/60 hover:bg-slate-700/60 text-left text-sm transition"
+      >
+        <span className="text-slate-200 font-medium text-sm">{topic}</span>
+        <ChevronDown size={13} className="text-slate-500 flex-shrink-0 ml-2 transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}/>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 pt-2 space-y-3 bg-slate-900/40">
+          {concepts.length > 0 ? (
+            <ul className="space-y-1.5">
+              {concepts.map((c, i) => (
+                <li key={i} className="flex gap-2 text-xs text-slate-300 leading-relaxed">
+                  <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
+                  <span>{c}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-slate-500 text-xs italic">No pre-written concepts yet. Ask the AI coach!</p>
+          )}
+
+          <textarea
+            value={note}
+            onChange={e => { setNote(e.target.value); saveNote(certId, topicKey, e.target.value); }}
+            placeholder="Your notes..."
+            rows={2}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-blue-500 resize-none"
+          />
+
+          <button
+            onClick={onAskAI}
+            className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition"
+          >
+            <MessageCircle size={11}/>
+            Ask AI Coach about this topic
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── KnowledgeBaseTab ─────────────────────────────────────────────────────────
+const KnowledgeBaseTab = ({ cert, onAskAI }) => (
+  <div className="space-y-4">
+    {cert.domains.map((domain, didx) => (
+      <div key={didx}>
+        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{domain.name}</h4>
+        {domain.topics.map((topic, tidx) => (
+          <TopicKBSection
+            key={tidx}
+            topic={topic}
+            certId={cert.id}
+            certName={cert.name}
+            topicKey={`${didx}-${tidx}`}
+            domainName={domain.name}
+            onAskAI={() => onAskAI(`Explain "${topic}" for ${cert.name} with key concepts and exam tips.`)}
+          />
+        ))}
+      </div>
+    ))}
+  </div>
+);
+
+// ─── CertDetailPanel ──────────────────────────────────────────────────────────
+const CertDetailPanel = ({ cert, activeTab, onTabChange, onLogTime, onAskAI, onClose, isOpen }) => {
+  const path = cert ? PATH_BY_CERT[cert.name] || SKILL_PATHS[0] : SKILL_PATHS[0];
+  const stats = cert ? getProgressStats(cert) : null;
+
+  return (
+    <>
+      {cert && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30"
+          style={{ animation: 'fadeIn .2s ease' }}
+          onClick={onClose}
+        />
+      )}
+      <div className={`detail-panel bg-slate-900 border-l border-slate-700/80 shadow-2xl flex flex-col ${isOpen ? 'open' : ''}`}>
+        {cert && stats && (
+          <>
+            {/* Handle (mobile) */}
+            <div className="flex justify-center pt-3 pb-1 md:hidden">
+              <div className="w-10 h-1 bg-slate-600 rounded-full"/>
+            </div>
+
+            {/* Header */}
+            <div className="px-5 pt-4 pb-3 border-b border-slate-800 flex-shrink-0">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0">
+                  <h2 className="font-bold text-lg text-white leading-tight">{cert.name}</h2>
+                  <p className="text-slate-400 text-xs mt-0.5">{cert.description}</p>
+                </div>
+                <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition flex-shrink-0 mt-0.5">
+                  <X size={18}/>
+                </button>
+              </div>
+
+              {/* Progress summary */}
+              <div className="grid grid-cols-4 gap-2 text-center">
+                {[
+                  { label: 'Progress', value: `${stats.progressPercent}%`, color: path.color },
+                  { label: 'Studied', value: `${stats.totalHours}h`, color: '#94a3b8' },
+                  { label: 'Topics', value: `${stats.topicsDone}/${stats.totalTopics}`, color: '#94a3b8' },
+                  { label: 'ETA', value: stats.estimatedCompletion ? `${stats.estimatedCompletion}d` : '—', color: '#94a3b8' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="bg-slate-800/60 rounded-lg py-2">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">{label}</div>
+                    <div className="text-sm font-bold font-mono" style={{ color }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tab bar */}
+            <div className="flex border-b border-slate-800 flex-shrink-0">
+              {[['topics','Topics'],['kb','Knowledge Base']].map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => onTabChange(id)}
+                  className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 ${activeTab === id ? 'text-white' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                  style={activeTab === id ? { borderColor: path.color, color: path.color } : {}}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 min-h-0">
+              {activeTab === 'topics'
+                ? <TopicsTab cert={cert} onLogTime={onLogTime}/>
+                : <KnowledgeBaseTab cert={cert} onAskAI={onAskAI}/>
+              }
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+};
+
+// ─── LogTimeModal ─────────────────────────────────────────────────────────────
+const LogTimeModal = ({ topicLabel, timeInput, setTimeInput, onLog, onClose }) => (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={onClose}>
+    <div className="bg-slate-800 rounded-2xl p-5 w-full max-w-xs border border-slate-600 shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-2 mb-1">
+        <Clock size={15} className="text-blue-400"/>
+        <h3 className="text-sm font-bold">Log Study Time</h3>
+      </div>
+      <p className="text-slate-400 text-xs mb-4 pl-6 truncate">{topicLabel}</p>
+
+      <div className="grid grid-cols-4 gap-1.5 mb-3">
+        {[0.5, 1, 1.5, 2].map(h => (
+          <button
+            key={h}
+            onClick={() => setTimeInput(String(h))}
+            className={`py-2 rounded-lg text-xs font-mono transition border ${
+              timeInput === String(h)
+                ? 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-slate-400'
+            }`}
+          >{h}h</button>
+        ))}
+      </div>
+
+      <input
+        type="number"
+        value={timeInput}
+        onChange={e => setTimeInput(e.target.value)}
+        placeholder="Custom hours"
+        className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 mb-4 text-white text-sm outline-none focus:border-blue-400"
+        min="0.25" step="0.25"
+        autoFocus
+      />
+
+      <div className="flex gap-2">
+        <button
+          onClick={onLog}
+          disabled={!timeInput || parseFloat(timeInput) <= 0}
+          className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-2.5 transition text-sm"
+        >Log</button>
+        <button onClick={onClose} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl py-2.5 transition text-sm">Cancel</button>
+      </div>
+    </div>
+  </div>
+);
+
+// ─── AIChatPanel ──────────────────────────────────────────────────────────────
+const AIChatPanel = ({ isOpen, onClose, messages, loading, chatInput, onInputChange, onSend, chatEndRef }) => (
+  <>
+    {isOpen && <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose}/>}
+    <div className={`chat-panel bg-slate-900 border-l border-slate-700/80 shadow-2xl flex flex-col ${isOpen ? 'open' : ''}`}>
+      <div className="flex justify-center pt-3 pb-1 md:hidden">
+        <div className="w-10 h-1 bg-slate-600 rounded-full"/>
+      </div>
+
+      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <MessageCircle size={16} className="text-blue-400"/>
+          <h2 className="font-bold text-sm">AI Study Coach</h2>
+        </div>
+        <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition"><X size={16}/></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+        {messages.length === 0 && (
+          <div className="text-center py-8 space-y-1">
+            <p className="text-slate-400 text-sm font-medium">Ask me anything about your certs</p>
+            {['What should I study next?','Give me SC-900 practice questions','How long until I\'m ready for AZ-104?'].map(s => (
+              <button key={s} onClick={() => onInputChange({ target: { value: s } })}
+                className="block w-full text-left text-xs text-slate-500 hover:text-slate-300 bg-slate-800/50 hover:bg-slate-800 rounded-lg px-3 py-2 transition mt-1.5">
+                "{s}"
+              </button>
+            ))}
+          </div>
+        )}
+
+        {messages.map((msg, idx) => (
+          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} msg-in`}>
+            <div className={`max-w-[88%] px-3 py-2.5 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
+              msg.role === 'user'
+                ? 'bg-blue-600 text-white rounded-br-sm'
+                : 'bg-slate-700/80 text-slate-100 rounded-bl-sm'
+            }`}>{msg.content}</div>
+          </div>
+        ))}
+
+        {loading && (
+          <div className="flex justify-start">
+            <div className="flex gap-1.5 px-3 py-3 bg-slate-700/80 rounded-xl rounded-bl-sm">
+              {[0, 0.2, 0.4].map((d, i) => (
+                <div key={i} className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: `${d}s` }}/>
+              ))}
+            </div>
+          </div>
+        )}
+        <div ref={chatEndRef}/>
+      </div>
+
+      <div className="p-3 border-t border-slate-800 flex-shrink-0">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={onInputChange}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && onSend()}
+            placeholder="Ask about your studies..."
+            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-blue-500"
+            disabled={loading}
+          />
+          <button
+            onClick={onSend}
+            disabled={loading || !chatInput.trim()}
+            className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:cursor-not-allowed rounded-xl px-3 py-2 transition flex items-center"
+          >
+            <Send size={14}/>
+          </button>
+        </div>
+      </div>
+    </div>
+  </>
+);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ══════════════════════════════════════════════════════════════════════════════
 const CertificationTracker = () => {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE) || '');
-  const [certs, setCerts] = useState([]);
+  const [apiKey, setApiKey]             = useState(() => localStorage.getItem(API_KEY_STORAGE) || '');
+  const [certs, setCerts]               = useState([]);
   const [selectedCert, setSelectedCert] = useState(null);
-  const [selectedTopic, setSelectedTopic] = useState(null);
-  const [timeInput, setTimeInput] = useState('');
-  const [messages, setMessages] = useState([]);
-  const [chatInput, setChatInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showTimeModal, setShowTimeModal] = useState(false);
-  const chatEndRef = useRef(null);
+  const [panelOpen, setPanelOpen]       = useState(false);
+  const [activeTab, setActiveTab]       = useState('topics');
+  const [chatOpen, setChatOpen]         = useState(false);
+  const [chatPanelOpen, setChatPanelOpen] = useState(false);
+  const [logModal, setLogModal]         = useState(null);
+  const [timeInput, setTimeInput]       = useState('');
+  const [messages, setMessages]         = useState([]);
+  const [chatInput, setChatInput]       = useState('');
+  const [loading, setLoading]           = useState(false);
+  const chatEndRef                      = useRef(null);
 
-  const CERT_TEMPLATES = {
-    'SonicWall Academy': {
-      description: 'SonicWall NSv Security Certification',
-      domains: [
-        { name: 'NSv Architecture & Deployment', topics: ['Platform overview', 'Virtual appliances', 'Multi-tenant setup', 'High availability'] },
-        { name: 'Network & VPN Configuration', topics: ['Interface setup', 'Routing basics', 'IPSec VPN', 'SSL VPN'] },
-        { name: 'Security Services', topics: ['Threat prevention', 'IPS/IDS', 'DPI-SSL', 'Application firewall'] },
-        { name: 'Advanced Features', topics: ['SD-WAN', 'Load balancing', 'Failover policies', 'WAN optimization'] }
-      ]
-    },
-    'Acronis Academy': {
-      description: 'Acronis Cyber Protect Cloud Certification',
-      domains: [
-        { name: 'Platform Architecture', topics: ['Cloud infrastructure', 'Agent deployment', 'Console setup', 'Integration options'] },
-        { name: 'Backup & Recovery', topics: ['Backup policies', 'Incremental backups', 'Disaster recovery', 'RTO/RPO planning'] },
-        { name: 'Security & Compliance', topics: ['Encryption', 'Access control', 'Audit logging', 'Compliance reporting'] },
-        { name: 'Advanced Topics', topics: ['Cloud-to-cloud', 'Ransomware protection', 'Patch management', 'Performance tuning'] }
-      ]
-    },
-    'SC-900': {
-      description: 'Microsoft Security, Compliance, and Identity Fundamentals',
-      domains: [
-        { name: 'Security Concepts', topics: ['Shared responsibility', 'Defense-in-depth', 'Zero trust', 'Threat landscape'] },
-        { name: 'Azure Identity & Access', topics: ['Azure AD', 'Authentication', 'Authorization', 'Conditional access'] },
-        { name: 'Compliance & Privacy', topics: ['Compliance offerings', 'Data protection', 'Privacy laws', 'Governance'] },
-        { name: 'Azure Security Services', topics: ['Azure Defender', 'Key Vault', 'Sentinel', 'Security Center'] }
-      ]
-    },
-    'AZ-104': {
-      description: 'Azure Administrator Associate',
-      domains: [
-        { name: 'Compute Resources', topics: ['VMs', 'App Services', 'Container instances', 'Scaling'] },
-        { name: 'Storage & Databases', topics: ['Storage accounts', 'Managed disks', 'SQL Database', 'Cosmos DB'] },
-        { name: 'Networking', topics: ['Virtual networks', 'Load balancing', 'DNS', 'VPN & ExpressRoute'] },
-        { name: 'Management & Monitoring', topics: ['Azure Monitor', 'Automation', 'Backup & recovery', 'Cost management'] }
-      ]
-    },
-    'AI-102': {
-      description: 'Azure AI Engineer Associate',
-      domains: [
-        { name: 'AI Services Overview', topics: ['Computer Vision', 'Language services', 'Search', 'Bot Framework'] },
-        { name: 'Vision & Image Analysis', topics: ['Image classification', 'Object detection', 'OCR', 'Face detection'] },
-        { name: 'Language & NLP', topics: ['Text analysis', 'Translation', 'QnA Maker', 'Language understanding'] },
-        { name: 'Search & Knowledge Mining', topics: ['Cognitive Search', 'Indexing', 'Enrichment', 'Query optimization'] }
-      ]
-    },
-    'AZ-204': {
-      description: 'Azure Developer Associate',
-      domains: [
-        { name: 'Compute Solutions', topics: ['App Service', 'Azure Functions', 'Containers', 'Deployment'] },
-        { name: 'Data & Storage', topics: ['Cosmos DB', 'Blob storage', 'Table storage', 'Data migration'] },
-        { name: 'APIs & Integration', topics: ['REST APIs', 'API Management', 'Logic Apps', 'Event Hubs'] },
-        { name: 'Authentication & Security', topics: ['Identity platform', 'Key Vault', 'Managed identity', 'RBAC'] }
-      ]
-    },
-    'AZ-305': {
-      description: 'Azure Solutions Architect Expert',
-      domains: [
-        { name: 'Design Infrastructure', topics: ['Scalability', 'High availability', 'Disaster recovery', 'Network design'] },
-        { name: 'Design Applications', topics: ['App architecture', 'Database design', 'Caching', 'Messaging patterns'] },
-        { name: 'Design Migration', topics: ['Assessment', 'Migration planning', 'Hybrid scenarios', 'Cost optimization'] },
-        { name: 'Governance & Security', topics: ['Identity architecture', 'Security design', 'Compliance', 'Cost management'] }
-      ]
-    },
-    'Microsoft Study': {
-      description: 'Microsoft Certification Preparation',
-      domains: [
-        { name: 'Azure Fundamentals', topics: ['Cloud concepts', 'Core services', 'Pricing & support', 'Azure learning paths'] },
-        { name: 'Study Resources', topics: ['Microsoft Learn modules', 'Practice exams', 'Documentation', 'Video tutorials'] },
-        { name: 'Exam Strategy', topics: ['Question types', 'Time management', 'Common pitfalls', 'Last-minute prep'] }
-      ]
-    }
-  };
-
-  const initializeCerts = () => {
-    const initialCerts = Object.entries(CERT_TEMPLATES).map(([name, template]) => ({
-      id: name.replace(/\s+/g, '-'),
-      name,
-      ...template,
-      targetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      progress: {}
-    }));
-    setCerts(initialCerts);
-  };
-
+  // ── Init / persist ─────────────────────────────────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem('certs');
     if (saved) {
       setCerts(JSON.parse(saved));
     } else {
-      initializeCerts();
+      const initial = Object.entries(CERT_TEMPLATES).map(([name, tpl]) => ({
+        id: name.replace(/\s+/g, '-'),
+        name,
+        ...tpl,
+        targetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        progress: {},
+      }));
+      setCerts(initial);
     }
   }, []);
 
@@ -178,370 +837,206 @@ const CertificationTracker = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const saveApiKey = (key) => {
-    localStorage.setItem(API_KEY_STORAGE, key);
-    setApiKey(key);
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const saveApiKey = k => { localStorage.setItem(API_KEY_STORAGE, k); setApiKey(k); };
+
+  const openCert = cert => {
+    setSelectedCert(cert);
+    setActiveTab('topics');
+    requestAnimationFrame(() => setPanelOpen(true));
   };
 
-  const updateProgress = (certId, topicKey, hours) => {
-    setCerts(prev => prev.map(cert => {
-      if (cert.id === certId) {
-        return {
-          ...cert,
-          progress: {
-            ...cert.progress,
-            [topicKey]: (cert.progress[topicKey] || 0) + hours
-          }
-        };
-      }
-      return cert;
-    }));
-    setShowTimeModal(false);
+  const closeCert = () => {
+    setPanelOpen(false);
+    setTimeout(() => setSelectedCert(null), 310);
+  };
+
+  const openChat = () => {
+    setChatOpen(true);
+    requestAnimationFrame(() => setChatPanelOpen(true));
+  };
+
+  const closeChat = () => {
+    setChatPanelOpen(false);
+    setTimeout(() => setChatOpen(false), 310);
+  };
+
+  const openLogModal = (certId, topicKey, topicLabel) => {
     setTimeInput('');
-    setSelectedTopic(null);
+    setLogModal({ certId, topicKey, topicLabel });
   };
 
-  const getProgressStats = (cert) => {
-    const totalHours = Object.values(cert.progress || {}).reduce((a, b) => a + b, 0);
-    const totalTopics = cert.domains.reduce((sum, domain) => sum + domain.topics.length, 0);
-    const daysUntilTarget = Math.ceil((new Date(cert.targetDate) - new Date()) / (1000 * 60 * 60 * 24));
-    const weeksRemaining = Math.max(1, Math.ceil(daysUntilTarget / 7));
-    const hoursPerWeek = totalHours > 0 ? (totalHours / weeksRemaining).toFixed(1) : 0;
-    const estimatedCompletion = hoursPerWeek > 0
-      ? Math.ceil((totalTopics * 5 - totalHours) / (parseFloat(hoursPerWeek) * 7))
-      : '—';
+  const handleLogTime = () => {
+    if (!logModal || !timeInput || parseFloat(timeInput) <= 0) return;
+    const { certId, topicKey } = logModal;
+    setCerts(prev => {
+      const updated = prev.map(c => c.id === certId
+        ? { ...c, progress: { ...c.progress, [topicKey]: (c.progress[topicKey] || 0) + parseFloat(timeInput) } }
+        : c
+      );
+      // Sync the open panel reference inside the same state update
+      const fresh = updated.find(c => c.id === certId);
+      if (fresh && selectedCert?.id === certId) setSelectedCert(fresh);
+      return updated;
+    });
+    setLogModal(null);
+    setTimeInput('');
+  };
 
-    return {
-      totalHours,
-      totalTopics,
-      daysUntilTarget,
-      weeksRemaining,
-      hoursPerWeek,
-      estimatedCompletion,
-      progressPercent: Math.min(100, Math.round((totalHours / (totalTopics * 5)) * 100))
-    };
+  const askAI = text => {
+    setChatInput(text);
+    if (!chatOpen) openChat();
   };
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || loading) return;
-
     const userMsg = chatInput;
     setChatInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setLoading(true);
 
     try {
-      const progressContext = certs.map(cert => {
-        const stats = getProgressStats(cert);
-        return `${cert.name}: ${stats.totalHours}h studied, ${stats.progressPercent}% progress, target: ${cert.targetDate}`;
+      const progressCtx = certs.map(c => {
+        const s = getProgressStats(c);
+        return `${c.name}: ${s.totalHours}h, ${s.progressPercent}% complete, target ${c.targetDate}`;
       }).join('\n');
 
-      const systemPrompt = `You are an expert study coach for IT certifications. You have access to the user's study progress:\n\n${progressContext}\n\nBased on their progress, provide targeted guidance on:\n1. What to study next based on weak areas\n2. Realistic timelines for completion\n3. Practice questions and scenarios\n4. Study strategies for their specific situation\n\nBe direct, specific, and actionable. Reference their actual progress numbers.`;
+      const certCtx = selectedCert
+        ? `\nThe user currently has "${selectedCert.name}" open — prioritize that cert in your response.`
+        : '';
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const system = `You are an expert IT certification study coach. User's progress:\n${progressCtx}${certCtx}\n\nBe direct, specific, and actionable. Reference their actual numbers.`;
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-allow-browser': 'true'
+          'anthropic-dangerous-allow-browser': 'true',
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 1024,
-          system: systemPrompt,
-          messages: [
-            ...messages.filter(m => m.role === 'user' || m.role === 'assistant'),
-            { role: 'user', content: userMsg }
-          ]
-        })
+          system,
+          messages: [...messages, { role: 'user', content: userMsg }],
+        }),
       });
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error?.message || `HTTP ${response.status}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
       }
 
-      const data = await response.json();
-      const assistantMsg = data.content[0]?.text || 'No response received.';
-      setMessages(prev => [...prev, { role: 'assistant', content: assistantMsg }]);
-    } catch (error) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Error: ${error.message}. Check your API key or network connection.`
-      }]);
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: 'assistant', content: data.content[0]?.text || 'No response.' }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }]);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!apiKey) return <ApiKeyBanner onSave={saveApiKey} />;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (!apiKey) return <ApiKeyBanner onSave={saveApiKey}/>;
+
+  const certById = Object.fromEntries(certs.map(c => [c.name, c]));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-
-        {/* Header */}
-        <header className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-1">
-              Certification Roadmap
-            </h1>
-            <p className="text-slate-400 text-sm">Track progress across 8 certifications with AI-powered study guidance</p>
-          </div>
-          <button
-            onClick={() => { localStorage.removeItem(API_KEY_STORAGE); setApiKey(''); }}
-            className="text-slate-500 hover:text-slate-300 text-xs font-mono uppercase tracking-widest whitespace-nowrap mt-1 transition"
-            title="Change API key"
-          >
-            API Key
-          </button>
-        </header>
-
-        <div className="flex flex-col lg:flex-row gap-6" style={{ minHeight: 'calc(100vh - 180px)' }}>
-
-          {/* Cert Grid */}
-          <div className="flex-1 overflow-y-auto pr-0 lg:pr-2">
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {certs.map(cert => {
-                const stats = getProgressStats(cert);
-                const isOpen = selectedCert?.id === cert.id;
-                return (
-                  <div
-                    key={cert.id}
-                    className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl border border-slate-600 hover:border-blue-400 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(59,130,246,0.15)]"
-                  >
-                    {/* Card header — always clickable to expand */}
-                    <div
-                      className="p-5 cursor-pointer"
-                      onClick={() => setSelectedCert(isOpen ? null : cert)}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <h3 className="text-base font-bold leading-tight">{cert.name}</h3>
-                        <span className="text-slate-400 text-lg select-none">{isOpen ? '▲' : '▼'}</span>
-                      </div>
-                      <p className="text-slate-400 text-xs mb-4">{cert.description}</p>
-
-                      {/* Progress bar */}
-                      <div className="mb-4">
-                        <div className="flex justify-between items-center mb-1.5">
-                          <span className="text-sm text-slate-300">{stats.progressPercent}% Complete</span>
-                          <span className="text-xs text-blue-400">{stats.totalHours}h studied</span>
-                        </div>
-                        <div className="w-full bg-slate-600 rounded-full h-2">
-                          <div
-                            className="h-2 rounded-full"
-                            style={{
-                              width: `${stats.progressPercent}%`,
-                              background: 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)'
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Stats grid */}
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="bg-slate-600/60 p-2 rounded-lg">
-                          <div className="text-slate-400 mb-0.5">Est. Complete</div>
-                          <div className="text-blue-300 font-semibold">{stats.estimatedCompletion} days</div>
-                        </div>
-                        <div className="bg-slate-600/60 p-2 rounded-lg">
-                          <div className="text-slate-400 mb-0.5">Target Date</div>
-                          <div className="text-cyan-300 font-semibold">{stats.daysUntilTarget} days</div>
-                        </div>
-                        <div className="bg-slate-600/60 p-2 rounded-lg">
-                          <div className="text-slate-400 mb-0.5">Velocity</div>
-                          <div className="text-green-300 font-semibold">{stats.hoursPerWeek}h/wk</div>
-                        </div>
-                        <div className="bg-slate-600/60 p-2 rounded-lg">
-                          <div className="text-slate-400 mb-0.5">Topics</div>
-                          <div className="text-purple-300 font-semibold">
-                            {Object.keys(cert.progress || {}).length}/{stats.totalTopics}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded topic list */}
-                    {isOpen && (
-                      <div className="border-t border-slate-600 px-5 pb-5 pt-4">
-                        <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                          {cert.domains.map((domain, didx) => (
-                            <div key={didx}>
-                              <h4 className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-2">{domain.name}</h4>
-                              {domain.topics.map((topic, tidx) => {
-                                const topicKey = `${didx}-${tidx}`;
-                                const hours = cert.progress?.[topicKey] || 0;
-                                return (
-                                  <div
-                                    key={tidx}
-                                    onClick={e => {
-                                      e.stopPropagation();
-                                      setSelectedTopic(topicKey);
-                                      setSelectedCert(cert);
-                                      setShowTimeModal(true);
-                                    }}
-                                    className={`mb-1.5 p-2 rounded-lg bg-slate-700 hover:bg-slate-600 cursor-pointer text-sm transition border-l-2 ${hours > 0 ? 'border-emerald-500' : 'border-slate-500'}`}
-                                  >
-                                    <div className="flex justify-between items-center">
-                                      <span>{topic}</span>
-                                      <span className={`text-xs font-mono ${hours > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                        {hours > 0 ? `${hours}h` : '+ log'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* AI Chat Sidebar */}
-          <div className="w-full lg:w-96 bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl border border-slate-600 flex flex-col" style={{ height: '600px' }}>
-            <div className="p-4 border-b border-slate-600 flex-shrink-0">
-              <h2 className="font-bold text-base flex items-center gap-2">
-                <MessageCircle size={18} className="text-blue-400" />
-                Study Coach
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">AI-powered guidance based on your progress</p>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-              {messages.length === 0 && (
-                <div className="text-slate-400 text-sm text-center py-8 space-y-1">
-                  <p className="font-medium">Ask me about:</p>
-                  <p className="text-xs">• What to study next</p>
-                  <p className="text-xs">• Practice questions</p>
-                  <p className="text-xs">• Study strategies</p>
-                  <p className="text-xs">• Progress analysis</p>
-                </div>
-              )}
-              {messages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[85%] p-3 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
-                      msg.role === 'user'
-                        ? 'bg-blue-600 text-white rounded-br-sm'
-                        : 'bg-slate-600 text-slate-100 rounded-bl-sm'
-                    }`}
-                  >
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
-              {loading && (
-                <div className="flex justify-start">
-                  <div className="flex gap-1.5 p-3 bg-slate-600 rounded-xl rounded-bl-sm">
-                    {[0, 0.2, 0.4].map((delay, i) => (
-                      <div
-                        key={i}
-                        className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
-                        style={{ animationDelay: `${delay}s` }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            <div className="p-4 border-t border-slate-600 flex-shrink-0">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
-                  placeholder="Ask about your studies..."
-                  className="flex-1 bg-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  disabled={loading}
-                />
-                <button
-                  onClick={sendChatMessage}
-                  disabled={loading || !chatInput.trim()}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg px-3 py-2 transition flex items-center"
-                >
-                  <Send size={15} />
-                </button>
-              </div>
-            </div>
-          </div>
+    <div className="min-h-screen text-white" style={{ padding: '16px 16px 80px' }}>
+      {/* Header */}
+      <header className="mb-6 flex items-end justify-between gap-4 max-w-5xl mx-auto">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+            Certification Roadmap
+          </h1>
+          <p className="text-slate-500 text-xs mt-0.5">{SKILL_PATHS.length} skill paths · {certs.length} certifications</p>
         </div>
+        <button
+          onClick={() => { localStorage.removeItem(API_KEY_STORAGE); setApiKey(''); }}
+          className="text-slate-600 hover:text-slate-400 text-[10px] font-mono uppercase tracking-widest transition"
+        >
+          API Key
+        </button>
+      </header>
+
+      {/* Roadmap lanes */}
+      <div className="max-w-5xl mx-auto">
+        {SKILL_PATHS.map(path => {
+          const certObjects = path.certs
+            .map(name => certById[name])
+            .filter(Boolean);
+          return (
+            <SkillPathLane
+              key={path.id}
+              path={path}
+              certObjects={certObjects}
+              selectedCertId={selectedCert?.id}
+              onSelectCert={cert => selectedCert?.id === cert.id ? closeCert() : openCert(cert)}
+            />
+          );
+        })}
       </div>
 
-      {/* Log Time Modal */}
-      {showTimeModal && selectedCert && selectedTopic !== null && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-          onClick={() => setShowTimeModal(false)}
+      {/* Detail panel */}
+      <CertDetailPanel
+        cert={selectedCert}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onLogTime={openLogModal}
+        onAskAI={askAI}
+        onClose={closeCert}
+        isOpen={panelOpen}
+      />
+
+      {/* Log time modal */}
+      {logModal && (
+        <LogTimeModal
+          topicLabel={logModal.topicLabel}
+          timeInput={timeInput}
+          setTimeInput={setTimeInput}
+          onLog={handleLogTime}
+          onClose={() => setLogModal(null)}
+        />
+      )}
+
+      {/* Chat FAB */}
+      {!chatPanelOpen && (
+        <button
+          onClick={openChat}
+          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-transform hover:scale-110 active:scale-95"
+          style={{ background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', boxShadow: '0 8px 32px rgba(59,130,246,0.4)' }}
+          title="AI Study Coach"
         >
-          <div
-            className="bg-slate-800 rounded-2xl p-6 w-full max-w-xs border border-slate-600 shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Clock size={16} className="text-blue-400" />
-              <h3 className="text-base font-bold">Log Study Time</h3>
-            </div>
-            <p className="text-slate-300 text-sm mb-4 pl-6">
-              {selectedCert.domains[parseInt(selectedTopic.split('-')[0])]
-                ?.topics[parseInt(selectedTopic.split('-')[1])]}
-            </p>
-            <div className="flex gap-2 mb-4">
-              {[0.5, 1, 1.5, 2].map(h => (
-                <button
-                  key={h}
-                  onClick={() => setTimeInput(String(h))}
-                  className={`flex-1 py-2 rounded-lg text-sm font-mono transition border ${
-                    timeInput === String(h)
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-slate-400'
-                  }`}
-                >
-                  {h}h
-                </button>
-              ))}
-            </div>
-            <input
-              type="number"
-              value={timeInput}
-              onChange={e => setTimeInput(e.target.value)}
-              placeholder="Custom hours"
-              className="w-full bg-slate-700 border border-slate-500 rounded-xl px-4 py-2.5 mb-4 text-white text-sm outline-none focus:border-blue-400"
-              min="0.5"
-              step="0.5"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => timeInput && parseFloat(timeInput) > 0 && updateProgress(selectedCert.id, selectedTopic, parseFloat(timeInput))}
-                disabled={!timeInput || parseFloat(timeInput) <= 0}
-                className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold rounded-xl py-2.5 transition text-sm"
-              >
-                Log
-              </button>
-              <button
-                onClick={() => setShowTimeModal(false)}
-                className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl py-2.5 transition text-sm"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+          <MessageCircle size={22}/>
+          {messages.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold">
+              {messages.filter(m => m.role === 'assistant').length}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* Chat panel */}
+      {(chatOpen || chatPanelOpen) && (
+        <AIChatPanel
+          isOpen={chatPanelOpen}
+          onClose={closeChat}
+          messages={messages}
+          loading={loading}
+          chatInput={chatInput}
+          onInputChange={e => setChatInput(e.target.value)}
+          onSend={sendChatMessage}
+          chatEndRef={chatEndRef}
+        />
       )}
     </div>
   );
 };
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<CertificationTracker />);
+root.render(<CertificationTracker/>);
 </script>
 </body>
 </html>
