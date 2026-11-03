@@ -81,3 +81,25 @@ Your data lives in browser localStorage on your phone only. If you clear Safari 
 - Tags (separate from categories, e.g. "reimbursable")
 - Cloud sync (would need a backend service)
 - Multi-device real-time sync
+
+## v2.7 (Save tab)
+- Tax jar: % of Freelance income held for TAJ, quarterly dates (Mar/Jun/Sep/Dec 15), threshold tracker. Log payments with the Tax category.
+- Income stability: months of runway, buffer goal, lowest/average income month.
+- Pardna: hands and draws move your balance but never count as spending or income.
+- Backups: Back up opens the iOS share sheet; choose Save to Files > iCloud Drive. Warning appears after 14 days without a backup.
+- Never remove the Home Screen icon without backing up first: the installed app keeps its own storage.
+
+## v2.8
+- Type-to-add bar on Home: "lunch 1500 card", "client paid 85k transfer", "spotify us$11.99", "gas 4000 yesterday". Opens the entry sheet pre-filled for a final check.
+- Accounts (bank, cash, credit card) with opening balances and transfers. Paying a card = transfer bank -> card. Untagged entries show under "Not in an account".
+- Sinking funds (Save tab): monthly amount needed for yearly costs; earmarked money is excluded from Safe to spend. "Spend it" logs the expense and rolls the date a year.
+- Import bank CSV (Settings): pick date/description/amount columns, preview, duplicates skipped, auto-categorizes common Jamaican merchants (JPS, NWC, Flow, Digicel, Texaco, Hi-Lo...).
+
+## v2.9 (research batch 1)
+- Goals: several named goals with target and optional date, On track / At risk status. Money in goals is left out of Safe to spend.
+- Lent & borrowed: IOUs with repayments; "Make it a gift" converts the rest to Family Support spending. Lending/borrowing moves your balance but is not income or spending.
+- Family & remittances: Family category group (Family Support, Remittance Sent, Barrel, Transfer Fees), Remittance income source, "for/from whom" tags, optional transfer fee. Yearly summary on Insights.
+- Lock & privacy: 4/6-digit PIN (PBKDF2, never stored in plain text), optional Face ID, auto-lock, blur-amounts eye button, triple-tap the Cashflow logo to lock instantly. Forgot PIN = erase and restore from backup.
+- Encrypted backups: AES-GCM with a password you choose. Lost password = unreadable file.
+- Debt payoff: snowball vs avalanche with extra-payment chips, debt-free date, interest.
+- Hurricane readiness: essentials-based emergency fund, 8-item checklist (resets yearly), survival budget mode.

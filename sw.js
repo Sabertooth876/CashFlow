@@ -1,5 +1,5 @@
 // Cashflow Service Worker - enables offline use
-const CACHE_NAME = 'cashflow-v1';
+const CACHE_NAME = 'cashflow-v2.9';
 const ASSETS = [
   './',
   './index.html',
