@@ -1,11 +1,12 @@
-// Cashflow Service Worker - enables offline use
-const CACHE_NAME = 'cashflow-v3.0';
+// Riddim (formerly Cashflow) Service Worker - enables offline use
+const CACHE_NAME = 'riddim-v3.0';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './icon-180.png'
 ];
 
 self.addEventListener('install', (e) => {

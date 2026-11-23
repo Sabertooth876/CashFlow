@@ -1,7 +1,7 @@
 {
-  "name": "Cashflow",
-  "short_name": "Cashflow",
-  "description": "Personal finance tracker",
+  "name": "Riddim",
+  "short_name": "Riddim",
+  "description": "Riddim: money with a rhythm. A Caribbean personal finance tracker that works offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

@@ -1,4 +1,7 @@
-# Cashflow v2 — Personal Finance PWA
+# Riddim v3.0 — money with a rhythm
+
+Caribbean personal finance PWA (formerly **Cashflow**). Single `index.html`, works offline, all data stays on your phone. Saved data still uses the `cashflow_v1` key, so updating from Cashflow keeps everything.
+
 
 Multi-currency personal finance tracker. Data stored locally on your device. No accounts, no servers.
 
