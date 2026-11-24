@@ -1,5 +1,5 @@
 // Riddim (formerly Cashflow) Service Worker - enables offline use
-const CACHE_NAME = 'riddim-v3.1';
+const CACHE_NAME = 'riddim-v3.2';
 const ASSETS = [
   './',
   './index.html',
